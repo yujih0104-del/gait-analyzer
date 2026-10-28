@@ -148,6 +148,29 @@ body.has-bar .toast { bottom: 84px; }
 .pick p { margin: 0 0 8px; font-weight: 700; }
 .pick canvas { display: block; width: 100%; max-width: 720px; height: auto; margin: 0 auto; border-radius: 6px; cursor: pointer; touch-action: manipulation; }
 .pick .row { margin-top: 8px; justify-content: center; }
+.rfg { margin: 10px 0 2px; font-size: 13px; font-weight: 700; }
+.rfg.em { color: var(--bad); } .rfg.dr { color: var(--warn); }
+.rfq { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.yn { display: flex; gap: 6px; }
+.yn label { cursor: pointer; }
+.yn input { position: absolute; opacity: 0; pointer-events: none; }
+.yn span { display: inline-block; min-width: 64px; text-align: center; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-weight: 700; color: var(--ink-2); background: var(--surface); }
+.yn input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.yn input.y:checked + span { background: var(--bad); border-color: var(--bad); color: #fff; }
+.yn input.n:checked + span { background: var(--surface-2); border-color: var(--ink-2); color: var(--ink); }
+.rfbox { margin-top: 12px; border-radius: 8px; padding: 12px 14px; font-size: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.rfbox b.t { display: block; font-size: 16px; margin-bottom: 4px; }
+.rfbox ul { margin: 4px 0 0; padding-left: 1.3em; }
+.rfbox.em { background: var(--bad-soft); border: 2px solid var(--bad); }
+.rfbox.em b.t { color: var(--bad); }
+.rfbox.dr { background: var(--warn-soft); border: 2px solid var(--warn); }
+.rfbox.dr b.t { color: var(--warn); }
+.rfbox.ok b.t { color: var(--ok); }
+.rfbox label.ov { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; font-weight: 700; cursor: pointer; }
+.rfbox label.ov input { width: 18px; height: 18px; margin-top: 2px; }
+.gate { border-radius: 8px; padding: 12px 14px; margin-top: 10px; font-size: 14px; }
+.gate.em { background: var(--bad-soft); border: 2px solid var(--bad); }
+.gate.dr, .gate.incomplete { background: var(--warn-soft); border: 2px solid var(--warn); }
 #handout, #report { display: none; }
 @page { size: A4; margin: 14mm 12mm; }
 @media print {
@@ -188,8 +211,16 @@ body.has-bar .toast { bottom: 84px; }
     <p>歩行を撮影 → AIで骨格を推定 → 関節角度・リズム・左右差を計測 → 課題と練習メニューを提案します。動画はこの端末の中だけで処理し、外部には送信しません。</p>
   </header>
 
+  <section class="card" id="secRF">
+    <h2><span class="no">1</span>安全チェック（はじめに必ず）</h2>
+    <p class="hint" style="margin:0 0 8px">運動を始める前に、医療機関の受診が必要なサイン（レッドフラッグ）がないか確認します。本人の今の状態について、すべての質問に答えてください。</p>
+    <div id="rfList"></div>
+    <div class="rfbox" id="rfResult" role="status" aria-live="polite"></div>
+    <div class="row" style="margin-top:8px"><button class="btn" id="rfReset" type="button">回答をやり直す</button></div>
+  </section>
+
   <section class="card">
-    <h2><span class="no">1</span>対象と撮影</h2>
+    <h2><span class="no">2</span>対象と撮影</h2>
     <div class="grid2">
       <label class="f">患者ID・氏名（任意）<input type="text" id="pid" autocomplete="off" placeholder="例）12345 山田"></label>
       <label class="f">評価日<input type="date" id="edate"></label>
@@ -219,7 +250,7 @@ body.has-bar .toast { bottom: 84px; }
   </section>
 
   <section class="card" id="secAnalyze" hidden>
-    <h2><span class="no">2</span>解析</h2>
+    <h2><span class="no">3</span>解析</h2>
     <div class="row">
       <button class="btn primary" id="run">解析を開始</button>
       <label class="f" style="flex-direction:row;align-items:center;gap:6px">精度
@@ -242,7 +273,7 @@ body.has-bar .toast { bottom: 84px; }
   </section>
 
   <section class="card" id="secResult" hidden>
-    <h2><span class="no">3</span>計測結果</h2>
+    <h2><span class="no">4</span>計測結果</h2>
     <div class="hint" id="resMeta"></div>
     <div class="tablewrap"><table class="m" id="metrics"></table></div>
     <div id="chartBox"></div>
@@ -254,7 +285,7 @@ body.has-bar .toast { bottom: 84px; }
   </section>
 
   <section class="card" id="secPlan" hidden>
-    <h2><span class="no">4</span>課題と練習メニュー</h2>
+    <h2><span class="no">5</span>課題と練習メニュー</h2>
     <div class="hint">チェックを入れた練習が、カルテ用文章と患者さん向け印刷に入ります。回数や内容は対象者に合わせて調整してください。</div>
     <div id="issues"></div>
     <details class="more" id="more"><summary>ほかの練習を追加する</summary><div id="moreList"></div></details>
@@ -1078,8 +1109,88 @@ const exItem = e => `<label class="ex"><input type="checkbox" data-ex="${e}" ${S
   <span><b>${EX[e].name}</b><span class="dose">${EX[e].dose}</span>
   <div class="how">${EX[e].how}</div>${EX[e].caution ? `<div class="caution">注意：${EX[e].caution}</div>` : ""}${figHTML(e)}</span></label>`;
 
+// ---------- 安全チェック（レッドフラッグ） ----------
+// em：すぐ受診・救急（練習は提示しない）、dr：運動の前に受診（医師の許可が確認できれば提示）
+const RF = [
+  { id: "stroke", lv: "em", q: "急に片側の手足が動かしにくい・しびれる、ろれつが回らない、顔の片側が下がっている" },
+  { id: "chest", lv: "em", q: "胸の痛みや締めつけ感、息苦しさがある" },
+  { id: "cauda", lv: "em", q: "尿や便が出にくい・もらしてしまう、お尻や股のまわりがしびれる" },
+  { id: "trauma", lv: "em", q: "転倒やケガのあとから、痛くて体重をかけられない・変形や強い腫れがある" },
+  { id: "sudden", lv: "em", q: "突然の激しい痛み（冷や汗・吐き気を伴う）や、これまでにない激しい頭痛がある" },
+  { id: "fever", lv: "dr", q: "痛みと一緒に発熱がある" },
+  { id: "night", lv: "dr", q: "安静にしていても、夜間も痛みが続く（姿勢を変えても楽にならない）" },
+  { id: "weight", lv: "dr", q: "理由の分からない体重減少がある（半年で数kg以上）" },
+  { id: "cancer", lv: "dr", q: "がんの治療を受けたことがある、または治療中である" },
+  { id: "neuro", lv: "dr", q: "手足のしびれや力の入りにくさが、だんだん強くなっている" },
+  { id: "myelo", lv: "dr", q: "箸・ボタンなど手の細かい動作がしにくくなり、歩くのも不安定になってきた" },
+  { id: "osteo", lv: "dr", q: "骨粗しょう症やステロイド薬の長期使用があり、軽い転倒・尻もちのあとから痛む" },
+  { id: "dvt", lv: "dr", q: "片方のふくらはぎ・脚が腫れていて、赤み・熱っぽさ・痛みがある" },
+  { id: "joint", lv: "dr", q: "関節が赤く腫れて、熱をもっている" },
+  { id: "worse", lv: "dr", q: "痛みが日に日に強くなっている、または今までに経験したことのない痛みがある" },
+];
+S.rf = {}; S.rfOk = false;
+function safety() {
+  const yes = RF.filter(x => S.rf[x.id] === "y"), left = RF.filter(x => !S.rf[x.id]).length;
+  if (yes.some(x => x.lv === "em")) return { st: "em", yes, left };
+  if (left) return { st: "incomplete", yes, left };
+  if (yes.length) return { st: S.rfOk ? "drok" : "dr", yes, left };
+  return { st: "ok", yes, left };
+}
+const safeToExercise = () => ["ok", "drok"].includes(safety().st);
+function renderRFList() {
+  const grp = (lv, title) => `<div class="rfg ${lv}">${title}</div>` + RF.filter(x => x.lv === lv).map(x => `
+    <div class="rfq"><span>${x.q}</span><span class="yn" role="radiogroup" aria-label="${x.q}">
+      <label><input type="radio" class="y" name="rf_${x.id}" value="y"${S.rf[x.id] === "y" ? " checked" : ""}><span>はい</span></label>
+      <label><input type="radio" class="n" name="rf_${x.id}" value="n"${S.rf[x.id] === "n" ? " checked" : ""}><span>いいえ</span></label></span></div>`).join("");
+  $("rfList").innerHTML = grp("em", "すぐに受診が必要なサイン") + grp("dr", "運動の前に受診が必要なサイン");
+  // 新しく「はい」になったサインには、改めて医師の許可確認が要る
+  $("rfList").querySelectorAll("input").forEach(i => i.addEventListener("change", () => { S.rf[i.name.slice(3)] = i.value; if (i.value === "y") S.rfOk = false; updateRF(); }));
+  updateRF();
+}
+function updateRF() {
+  const sf = safety(), box = $("rfResult"), list = sf.yes.length ? `<ul>${sf.yes.map(x => `<li>${x.q}</li>`).join("")}</ul>` : "";
+  box.className = "rfbox " + ({ em: "em", dr: "dr", drok: "dr", ok: "ok" }[sf.st] || "");
+  box.innerHTML = {
+    em: `<b class="t">⚠ すぐに医療機関を受診してください</b>急な症状や強い症状がある場合は、迷わず119番（救急車）を呼んでください。運動・練習は行わないでください。${list}`,
+    incomplete: `<b class="t">未回答が ${sf.left} 問あります</b>すべての質問に答えると、練習メニューを表示できます。`,
+    dr: `<b class="t">運動を始める前に、医師の診察を受けてください</b>次のサインがあります。原因を確かめてから運動を始めましょう。${list}
+      <label class="ov"><input type="checkbox" id="rfOk">医師に相談済みで、運動の許可を得ている（担当の医療者が確認）</label>`,
+    drok: `<b class="t">医師の許可を確認済み</b>次のサインについて、医師に相談済みで運動の許可を得ています。症状が変わったら練習を中止して受診してください。${list}
+      <label class="ov"><input type="checkbox" id="rfOk" checked>医師に相談済みで、運動の許可を得ている（担当の医療者が確認）</label>`,
+    ok: `<b class="t">✓ 受診が必要なサインはありません</b>練習中に痛みが強くなる・新しい症状が出た場合は中止して、担当者や医療機関に相談してください。`,
+  }[sf.st];
+  const ov = $("rfOk"); if (ov) ov.addEventListener("change", () => { S.rfOk = ov.checked; updateRF(); });
+  if (!$("secPlan").hidden) renderPlan();
+}
+$("rfReset").addEventListener("click", () => { S.rf = {}; S.rfOk = false; renderRFList(); $("secRF").scrollIntoView({ behavior: "smooth", block: "start" }); });
+function rfText() {
+  const sf = safety();
+  if (sf.st === "incomplete") return `未完了（未回答 ${sf.left} 問）`;
+  if (sf.st === "ok") return "該当なし";
+  const items = sf.yes.map(x => x.q).join("／");
+  return sf.st === "em" ? `緊急受診のサインあり → 練習は提示せず受診を指示（${items}）` : `受診が必要なサインあり（${items}）${sf.st === "drok" ? " → 医師に相談済み・運動許可を確認" : " → 受診を指示、練習は保留"}`;
+}
+
 function renderPlan() {
   S.issues = S.res ? findIssues() : [];
+  const sf = safety();
+  if (!safeToExercise()) {
+    // 安全チェックを通過するまで練習は提示・印刷しない
+    S.picked = new Set();
+    $("secPlan").hidden = false;
+    $("issues").innerHTML = `<div class="gate ${sf.st}">${{
+      em: "<b>練習メニューは表示しません。</b>すぐに医療機関を受診するサインがあります（①安全チェックを参照）。",
+      dr: "<b>練習メニューは保留中です。</b>運動の前に医師の診察が必要なサインがあります。医師に相談済みで運動の許可がある場合は、①安全チェックでチェックを入れてください。",
+      incomplete: `<b>練習メニューを表示する前に、①安全チェックにすべて答えてください。</b>（残り ${sf.left} 問）`,
+    }[sf.st]}<div class="row" style="margin-top:8px"><button class="btn" type="button" id="toRF">①安全チェックへ</button></div></div>` +
+      (S.issues.length ? `<p class="hint" style="margin-top:12px">動画から見つかった課題：${S.issues.map(x => x.title).join("、")}</p>` : "");
+    $("toRF").addEventListener("click", () => $("secRF").scrollIntoView({ behavior: "smooth", block: "start" }));
+    $("moreList").innerHTML = ""; $("more").hidden = true;
+    setBar(false);
+    updateOutputs();
+    return;
+  }
+  $("more").hidden = false;
   S.picked = new Set(S.issues.flatMap(x => x.ex.slice(0, 2)));
   $("secPlan").hidden = false;
   const shown = new Set();
@@ -1101,9 +1212,12 @@ function renderPlan() {
   setBar(true);
   updateOutputs();
 }
+// on：練習メニューの印刷を出す。評価結果の印刷は、安全チェックで練習を保留中でも記録用に出す
 function setBar(on) {
-  $("printbar").hidden = !on;
-  document.body.classList.toggle("has-bar", on);
+  const show = on || !!S.res;
+  $("printbar").hidden = !show;
+  document.body.classList.toggle("has-bar", show);
+  $("print").hidden = $("pickCnt").hidden = !on;
   $("printReport").hidden = !S.res;
 }
 
@@ -1111,6 +1225,7 @@ function karteText() {
   const r = S.res;
   const L = [];
   L.push(`【${r ? "歩行動画分析" : "自主練習指導"}】${$("edate").value.replaceAll("-", "/")}${$("pid").value ? "　" + $("pid").value : ""}`);
+  L.push(`安全チェック（レッドフラッグ）：${rfText()}`);
   if (r) {
     L.push(`撮影方向：${r.view === "side" ? "側方" : "前後"}　補助具：${$("aid").value}`);
     for (const x of rows()) L.push(`・${x.label}：${x.val.replace(/<[^>]+>/g, "")}${x.note ? "（" + x.note + "）" : ""}　[${TAG[x.st]}]`);
@@ -1121,6 +1236,7 @@ function karteText() {
     L.push("");
   }
   L.push("【自主練習プログラム】");
+  if (!safeToExercise()) L.push("安全チェックの結果により提示を保留");
   for (const e of S.picked) L.push(`・${EX[e].name}　${EX[e].dose}`);
   if (r) { L.push(""); L.push("※姿勢推定AIによる2D動画解析の参考値。"); }
   return L.join("\n");
@@ -1148,10 +1264,11 @@ function buildReport() {
   } catch {}
   $("report").innerHTML = `<h1>歩行動画分析 評価結果</h1>
     <div class="meta2">評価日：${$("edate").value.replaceAll("-", "/")}　${$("pid").value ? "対象：" + esc($("pid").value) + "　" : ""}補助具：${$("aid").value}　撮影方向：${r.view === "side" ? "側方" : "前後"}</div>
+    <h2>安全チェック（レッドフラッグ）</h2><p class="meta2">${rfText()}</p>
     <h2>計測値</h2><table class="m">${$("metrics").innerHTML}</table>
     <h2>角度の推移</h2>${$("chartBox").innerHTML}${img}
     <h2>課題</h2>${S.issues.length ? `<ol>${S.issues.map(x => `<li><b>${x.title}</b>：${x.finding}<br><span class="note">考えられる要因：${x.cause}</span></li>`).join("")}</ol>` : "<p>判定基準を超える項目なし</p>"}
-    <h2>自主練習プログラム</h2><ol>${[...S.picked].map(e => `<li>${EX[e].name}　${EX[e].dose}</li>`).join("")}</ol>
+    <h2>自主練習プログラム</h2>${safeToExercise() ? `<ol>${[...S.picked].map(e => `<li>${EX[e].name}　${EX[e].dose}</li>`).join("")}</ol>` : "<p>安全チェックの結果により提示を保留</p>"}
     <p class="note">※ 単眼カメラ映像からの姿勢推定AIによる2次元推定値（参考値）。評価・プログラムの決定は担当療法士の観察と臨床判断による。</p>`;
 }
 function doPrint(mode) {
@@ -1177,6 +1294,7 @@ $("copyKarte").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText($("karte").value); toast("カルテ用の文章をコピーしました。"); }
   catch { $("karte").select(); document.execCommand("copy"); toast("コピーしました。"); }
 });
-$("print").addEventListener("click", () => { if (!S.picked.size) return toast("練習メニューを1つ以上選んでください。"); doPrint("handout"); });
+$("print").addEventListener("click", () => { if (!safeToExercise()) return toast("安全チェックを完了してください。"); if (!S.picked.size) return toast("練習メニューを1つ以上選んでください。"); doPrint("handout"); });
 $("printReport").addEventListener("click", () => { buildReport(); doPrint("report"); });
+renderRFList();
 </script>
