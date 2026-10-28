@@ -113,6 +113,10 @@ details.more h4 { margin: 12px 0 0; font-size: 13px; color: var(--accent); }
 .printbar .cnt { align-self: center; font-size: 13px; color: var(--ink-2); }
 body.has-bar .wrap { padding-bottom: 96px; }
 body.has-bar .toast { bottom: 84px; }
+.pick { margin-top: 12px; border: 2px solid var(--accent); border-radius: var(--r); padding: 12px; background: var(--accent-soft); }
+.pick p { margin: 0 0 8px; font-weight: 700; }
+.pick canvas { display: block; width: 100%; max-width: 720px; height: auto; margin: 0 auto; border-radius: 6px; cursor: pointer; touch-action: manipulation; }
+.pick .row { margin-top: 8px; justify-content: center; }
 #handout, #report { display: none; }
 @page { size: A4; margin: 14mm 12mm; }
 @media print {
@@ -168,6 +172,7 @@ body.has-bar .toast { bottom: 84px; }
     <ul class="tips">
       <li><b>側方</b>：カメラを腰の高さに固定し、進行方向に対して真横から撮影。全身（頭〜足先）が映る距離で、3〜4歩以上が入るように。関節角度・ケイデンス・左右の歩行リズムを計測します。</li>
       <li><b>前後</b>：正面または真後ろから撮影。骨盤の傾き（トレンデレンブルグ徴候）・体幹の側方動揺を計測します。</li>
+      <li><b>介助しながら撮る場合</b>：2人以上映っていると、解析後に「歩行者はどの人か」を選ぶ画面が出ます。歩行者をタップすると、その人だけを追跡して計測します。介助者はなるべくカメラから見て歩行者の向こう側に立つと、体が重なりにくく精度が上がります。</li>
       <li>明るい場所で、体の線が分かる服装・背景がすっきりした場所が理想です。1本の動画は 5〜20 秒程度が目安（最大 60 秒まで解析）。</li>
     </ul>
   </section>
@@ -180,9 +185,15 @@ body.has-bar .toast { bottom: 84px; }
         <select id="model"><option value="full">標準</option><option value="heavy">高精度（遅い）</option><option value="lite">高速</option></select>
       </label>
       <button class="btn" id="snap" disabled>この場面を画像で保存</button>
+      <button class="btn" id="reselect" hidden>歩行者を選び直す</button>
     </div>
     <div class="progress"><i id="bar"></i></div>
     <div class="status" id="status">動画を確認して「解析を開始」を押してください。</div>
+    <div class="pick" id="pickPanel" hidden>
+      <p id="pickMsg">2人以上が映っています。歩行者（計測したい人）をタップしてください。</p>
+      <canvas id="pickCanvas"></canvas>
+      <div class="row" id="pickBtns"></div>
+    </div>
     <div class="stage" id="stage">
       <video id="video" playsinline controls muted></video>
       <canvas id="overlay"></canvas>
@@ -287,6 +298,7 @@ function loadFile(f) {
   $("video").src = S.url;
   $("secAnalyze").hidden = false; $("secResult").hidden = true; $("secPlan").hidden = true; setBar(false);
   $("snap").disabled = true; $("bar").style.width = "0";
+  $("pickPanel").hidden = true; $("reselect").hidden = true;
   clearOverlay();
   setStatus("動画を確認して「解析を開始」を押してください。");
   $("secAnalyze").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -300,7 +312,7 @@ async function getLandmarker(model) {
   setStatus("AIモデルを読み込んでいます…（初回は数十秒かかることがあります）");
   const { FilesetResolver, PoseLandmarker } = await import(VISION_URL + "/vision_bundle.mjs");
   const fileset = await FilesetResolver.forVisionTasks(VISION_URL + "/wasm");
-  const opts = d => ({ baseOptions: { modelAssetPath: MODEL_URL(model), delegate: d }, runningMode: "VIDEO", numPoses: 1,
+  const opts = d => ({ baseOptions: { modelAssetPath: MODEL_URL(model), delegate: d }, runningMode: "VIDEO", numPoses: 3,
     minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
   let lm;
   try { lm = await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
@@ -331,23 +343,121 @@ $("run").addEventListener("click", async () => {
       await seek(v, t);
       const ts = Math.max(lastTs + 1, Math.round(t * 1000)); lastTs = ts;
       const r = lm.detectForVideo(v, ts);
-      S.frames.push({ t, lm: r.landmarks && r.landmarks[0] ? r.landmarks[0].map(p => ({ x: p.x, y: p.y, v: p.visibility ?? 1 })) : null });
+      S.frames.push({ t, all: (r.landmarks || []).map(ps => ps.map(p => ({ x: p.x, y: p.y, v: p.visibility ?? 1 }))), lm: null });
       if (i % 3 === 0) { $("bar").style.width = (100 * (i + 1) / n).toFixed(1) + "%"; setStatus(`解析中… ${i + 1} / ${n} フレーム`); drawFrame(S.frames[i]); }
     }
     $("bar").style.width = "100%";
-    const detected = S.frames.filter(f => f.lm).length;
-    if (detected < n * 0.4) throw new Error(`人物を検出できたのは ${detected}/${n} フレームでした。全身が映るように撮り直してください。`);
-    S.res = computeAll();
-    setStatus(`解析完了：${detected}/${n} フレームで骨格を検出。動画を再生すると推定骨格を重ねて表示します。`);
-    $("snap").disabled = false;
-    await seek(v, 0); drawAt(0);
-    renderResults();
-    renderPlan();
-    $("secResult").scrollIntoView({ behavior: "smooth", block: "start" });
+    const multi = S.frames.filter(f => f.all.length > 1).length;
+    $("reselect").hidden = multi < 3;
+    if (multi >= 3) { await openPicker(seedFrame()); return; }
+    // 1人だけの動画：途中で誤検出が混ざっても同じ人を追う
+    const first = S.frames.findIndex(f => f.all.length);
+    if (first < 0) throw new Error("人物を検出できませんでした。全身が映るように撮り直してください。");
+    track(first, 0);
+    await finish();
   } catch (e) {
     console.error(e);
     setStatus("解析できませんでした：" + (e.message || e) + (String(e).includes("import") || String(e).includes("fetch") ? "（AIモデルの読み込みにはインターネット接続が必要です）" : ""), true);
   } finally { $("run").disabled = false; }
+});
+
+async function finish() {
+  const v = $("video"), n = S.frames.length;
+  const detected = S.frames.filter(f => f.lm).length;
+  if (detected < n * 0.4) throw new Error(`歩行者を追跡できたのは ${detected}/${n} フレームでした。全身が映るように撮り直すか、「歩行者を選び直す」で別の場面から選んでください。`);
+  S.res = computeAll();
+  const multi = S.frames.some(f => f.all.length > 1);
+  setStatus(`解析完了：${detected}/${n} フレームで${multi ? "選んだ歩行者を追跡" : "骨格を検出"}。動画を再生すると推定骨格を重ねて表示します${multi ? "（灰色の線は計測に使っていない人）" : ""}。`);
+  $("snap").disabled = false;
+  await seek(v, 0); drawAt(0);
+  renderResults();
+  renderPlan();
+  $("secResult").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ---------- 歩行者の選択と追跡 ----------
+const KEY = [0, 11, 12, 23, 24, 25, 26, 27, 28];
+const PICK_COL = ["#e8590c", "#1c7ed6", "#2f9e44"];
+const ctr = lm => { const ids = [11, 12, 23, 24]; return { x: ids.reduce((s, i) => s + lm[i].x, 0) / 4 * S.W, y: ids.reduce((s, i) => s + lm[i].y, 0) / 4 * S.H }; };
+const torso = lm => Math.max(1, Math.hypot((lm[11].x + lm[12].x - lm[23].x - lm[24].x) / 2 * S.W, (lm[11].y + lm[12].y - lm[23].y - lm[24].y) / 2 * S.H));
+// 2つの姿勢の違い（主要関節の平均距離を体幹長で割った値。dx,dy は予測した移動量）
+function poseCost(c, ref, dx, dy) {
+  let s = 0, n = 0;
+  for (const i of KEY) { if (c[i].v < 0.3 || ref[i].v < 0.3) continue; s += Math.hypot(c[i].x * S.W - (ref[i].x * S.W + dx), c[i].y * S.H - (ref[i].y * S.H + dy)); n++; }
+  return n < 3 ? Infinity : s / n / torso(ref) + Math.abs(Math.log(torso(c) / torso(ref)));
+}
+// 選んだ人を起点に、前後のフレームへ最も姿勢の近い人をつないでいく
+function track(seed, k) {
+  S.frames.forEach(f => f.lm = null);
+  S.frames[seed].lm = S.frames[seed].all[k];
+  const scale = 30 / S.fps;
+  for (const dir of [1, -1]) {
+    let ref = S.frames[seed].lm, refI = seed, prev = null, prevI = 0;
+    for (let i = seed + dir; i >= 0 && i < S.frames.length; i += dir) {
+      const gap = Math.abs(i - refI);
+      if (gap > S.fps) break; // 1秒以上見失ったら、別人に乗り移らないよう追跡をやめる
+      let dx = 0, dy = 0;
+      if (prev) { const a = ctr(ref), b = ctr(prev), g = Math.abs(refI - prevI); dx = (a.x - b.x) / g * gap; dy = (a.y - b.y) / g * gap; }
+      let best = null, bc = Infinity;
+      for (const c of S.frames[i].all) { const cost = poseCost(c, ref, dx, dy); if (cost < bc) { bc = cost; best = c; } }
+      if (best && bc < (0.35 + 0.1 * (gap - 1)) * scale) { S.frames[i].lm = best; prev = ref; prevI = refI; ref = best; refI = i; }
+    }
+  }
+}
+// 選択に使う場面：人数が最も多く、人どうしが最も離れているフレーム
+function seedFrame() {
+  let bi = 0, bn = 0, bd = -1;
+  S.frames.forEach((f, i) => {
+    if (f.all.length < bn) return;
+    let d = Infinity;
+    for (let a = 0; a < f.all.length; a++) for (let b = a + 1; b < f.all.length; b++) { const p = ctr(f.all[a]), q = ctr(f.all[b]); d = Math.min(d, Math.hypot(p.x - q.x, p.y - q.y)); }
+    if (f.all.length > bn || d > bd) { bi = i; bn = f.all.length; bd = d; }
+  });
+  return bi;
+}
+let pickIdx = 0;
+async function openPicker(i) {
+  const v = $("video"), f = S.frames[i];
+  pickIdx = i;
+  await seek(v, f.t);
+  const c = $("pickCanvas"); c.width = S.W; c.height = S.H;
+  const ctx = c.getContext("2d"), lw = Math.max(3, S.W / 200);
+  ctx.drawImage(v, 0, 0, S.W, S.H);
+  const badges = [];
+  f.all.forEach((lm, k) => {
+    ctx.strokeStyle = PICK_COL[k]; ctx.lineWidth = lw; ctx.lineCap = "round";
+    for (const [a, b] of BONES) { if (lm[a].v < 0.3 || lm[b].v < 0.3) continue; ctx.beginPath(); ctx.moveTo(lm[a].x * S.W, lm[a].y * S.H); ctx.lineTo(lm[b].x * S.W, lm[b].y * S.H); ctx.stroke(); }
+    const top = Math.min(...lm.filter(p => p.v >= 0.3).map(p => p.y)) * S.H, r = lw * 6;
+    let x = ctr(lm).x;
+    while (badges.some(bx => Math.abs(bx - x) < r * 2.3)) x += r * 2.3; // 近くに立つ人の番号が重ならないようにずらす
+    badges.push(x);
+    ctx.fillStyle = PICK_COL[k]; ctx.beginPath(); ctx.arc(x, Math.max(r, top - r * 1.4), r, 0, 7); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = `bold ${r * 1.3}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(k + 1, x, Math.max(r, top - r * 1.4));
+  });
+  $("pickBtns").innerHTML = f.all.map((_, k) => `<button class="btn" data-k="${k}" style="border-color:${PICK_COL[k]};color:${PICK_COL[k]}">${k + 1}番が歩行者</button>`).join("");
+  $("pickBtns").querySelectorAll("button").forEach(b => b.addEventListener("click", () => choose(+b.dataset.k)));
+  $("pickMsg").textContent = `${f.all.length}人が映っています。歩行者（計測したい人）をタップするか、下の番号を選んでください。`;
+  $("pickPanel").hidden = false;
+  setStatus("歩行者を選んでください。");
+  $("pickPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function choose(k) {
+  $("pickPanel").hidden = true;
+  track(pickIdx, k);
+  try { await finish(); }
+  catch (e) { setStatus("解析できませんでした：" + (e.message || e), true); }
+}
+$("pickCanvas").addEventListener("click", e => {
+  const c = $("pickCanvas"), b = c.getBoundingClientRect();
+  const x = (e.clientX - b.left) / b.width * S.W, y = (e.clientY - b.top) / b.height * S.H;
+  const f = S.frames[pickIdx];
+  let bk = 0, bd = Infinity;
+  f.all.forEach((lm, k) => { for (const p of lm) { if (p.v < 0.3) continue; const d = Math.hypot(p.x * S.W - x, p.y * S.H - y); if (d < bd) { bd = d; bk = k; } } });
+  choose(bk);
+});
+$("reselect").addEventListener("click", () => {
+  const cur = frameAt($("video").currentTime);
+  openPicker(cur && cur.all.length > 1 ? S.frames.indexOf(cur) : seedFrame());
 });
 
 // ---------- 骨格の重ね描き ----------
@@ -355,8 +465,15 @@ function clearOverlay() { const c = $("overlay"); c.getContext("2d").clearRect(0
 function drawFrame(f, ctx, W, H) {
   const c = $("overlay");
   if (!ctx) { c.width = S.W || c.width; c.height = S.H || c.height; ctx = c.getContext("2d"); W = c.width; H = c.height; ctx.clearRect(0, 0, W, H); }
-  if (!f || !f.lm) return;
+  if (!f) return;
   const lw = Math.max(2, W / 250);
+  ctx.lineCap = "round";
+  for (const o of f.all || []) {
+    if (o === f.lm) continue;
+    ctx.strokeStyle = "rgba(200,200,200,.7)"; ctx.lineWidth = lw * 0.6;
+    for (const [a, b] of BONES) { if (o[a].v < 0.3 || o[b].v < 0.3) continue; ctx.beginPath(); ctx.moveTo(o[a].x * W, o[a].y * H); ctx.lineTo(o[b].x * W, o[b].y * H); ctx.stroke(); }
+  }
+  if (!f.lm) return;
   const css = getComputedStyle(document.documentElement);
   const colL = css.getPropertyValue("--left").trim(), colR = css.getPropertyValue("--right").trim();
   const side = i => (i % 2 === 1 ? colL : colR); // 奇数番号が左
