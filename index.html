@@ -193,6 +193,14 @@ body.has-bar .toast { bottom: 84px; }
 .gate { border-radius: 8px; padding: 12px 14px; margin-top: 10px; font-size: 14px; }
 .gate.em { background: var(--bad-soft); border: 2px solid var(--bad); }
 .gate.dr, .gate.incomplete { background: var(--warn-soft); border: 2px solid var(--warn); }
+.mkbox { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.mkbox summary { cursor: pointer; font-weight: 700; }
+.mkbox .mkon { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-weight: 700; cursor: pointer; }
+.mkbox .mkon input { width: 20px; height: 20px; accent-color: var(--accent); }
+.mksw { display: inline-block; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line); background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--surface) 4px 8px); }
+.mkguide { margin-top: 10px; }
+.mkrow { margin-top: 10px; }
+.stage.picking canvas { pointer-events: auto; cursor: crosshair; }
 #handout, #report { display: none; }
 @page { size: A4; margin: 14mm 12mm; }
 @media print {
@@ -271,6 +279,25 @@ body.has-bar .toast { bottom: 84px; }
       <li><b>介助しながら撮る場合</b>：2人以上映っていると、解析後に「歩行者はどの人か」を選ぶ画面が出ます。歩行者をタップすると、その人だけを追跡して計測します。介助者はなるべくカメラから見て歩行者の向こう側に立つと、体が重なりにくく精度が上がります。</li>
       <li>明るい場所で、体の線が分かる服装・背景がすっきりした場所が理想です。1本の動画は 5〜20 秒程度が目安（最大 60 秒まで解析）。</li>
     </ul>
+    <details class="mkbox" id="mkBox">
+      <summary>🎯 マーカー（シール）を使う　<span class="hint">側方撮影で関節角度をより正確に</span></summary>
+      <label class="mkon"><input type="checkbox" id="mkOn">マーカーで関節の位置を補正する</label>
+      <div class="grid2" style="margin-top:8px">
+        <label class="f">シールを貼った側（カメラに向ける側）<select id="mkSide"><option value="R">右側</option><option value="L">左側</option></select></label>
+        <label class="f">シールの色<select id="mkColor"><option value="custom">動画から登録（推奨）</option><option value="pink">蛍光ピンク</option><option value="green">蛍光グリーン</option><option value="orange">蛍光オレンジ</option><option value="blue">青</option></select></label>
+        <label class="f">色の判定の幅<select id="mkSens"><option value="narrow">狭い（背景に似た色が多いとき）</option><option value="std" selected>標準</option><option value="wide">広い（シールが見つからないとき）</option></select></label>
+        <div class="f">登録中の色<div class="row"><span class="mksw" id="mkSw"></span><span class="hint" id="mkSwT">未登録</span></div></div>
+      </div>
+      <table class="m mkguide"><tr><th>部位</th><th>貼る場所</th><th></th></tr>
+        <tr><td>肩</td><td>肩峰</td><td>必須</td></tr><tr><td>股関節</td><td>大転子</td><td>必須</td></tr><tr><td>膝</td><td>大腿骨外側上顆（膝関節裂隙の高さの外側）</td><td>必須</td></tr>
+        <tr><td>足関節</td><td>外果</td><td>必須</td></tr><tr><td>足部</td><td>第5中足骨頭（靴の場合は靴の同じ位置）</td><td>必須</td></tr><tr><td>踵</td><td>踵骨の後面（靴の場合は靴の踵）</td><td>任意</td></tr></table>
+      <ul class="tips">
+        <li>直径2〜3cmの丸いシールを、<b>すべて同じ1色</b>で。光を反射しない、服・背景・肌にない色（蛍光ピンク・緑など）が向いています。</li>
+        <li>短パンや体にぴったりした服で、皮膚（または服の同じ位置）に貼ります。シールを貼った側を<b>カメラに向けて</b>歩いてもらいます（往復するなら両側に貼るか、片道ずつ撮影）。</li>
+        <li>カメラは固定し、進行方向に対して真横・3〜4m離れて。スマホのビデオを<b>60fps</b>にすると、足部のシールがぶれにくくなります。</li>
+        <li>動画を読み込んだら、③で「シールの色を動画から登録」→「シール検出テスト」で、すべてのシールに丸が付くことを確認してから解析してください。</li>
+      </ul>
+    </details>
   </section>
 
   <section class="card" id="secAnalyze" hidden>
@@ -282,6 +309,10 @@ body.has-bar .toast { bottom: 84px; }
       </label>
       <button class="btn" id="snap" disabled>この場面を画像で保存</button>
       <button class="btn" id="reselect" hidden>歩行者を選び直す</button>
+    </div>
+    <div class="row mkrow" id="mkRow" hidden>
+      <button class="btn" id="mkPickBtn" type="button">🎯 シールの色を動画から登録</button>
+      <button class="btn" id="mkTestBtn" type="button">シール検出テスト（この場面）</button>
     </div>
     <div class="progress"><i id="bar"></i></div>
     <div class="status" id="status">動画を確認して「解析を開始」を押してください。</div>
@@ -768,6 +799,7 @@ $("run").addEventListener("click", async () => {
       const ts = Math.max(lastTs + 1, Math.round(t * 1000)); lastTs = ts;
       const r = lm.detectForVideo(v, ts);
       S.frames.push({ t, all: (r.landmarks || []).map(ps => ps.map(p => ({ x: p.x, y: p.y, v: p.visibility ?? 1 }))), lm: null });
+      if (MK.on) S.frames[i].blobs = detectBlobs(v, S.frames[i].all);
       if (i % 3 === 0) { $("bar").style.width = (100 * (i + 1) / n).toFixed(1) + "%"; setStatus(`解析中… ${i + 1} / ${n} フレーム`); drawFrame(S.frames[i]); await new Promise(r => setTimeout(r)); }
     }
     $("bar").style.width = "100%";
@@ -790,6 +822,8 @@ async function finish() {
   const detected = S.frames.filter(f => f.lm).length;
   if (detected < n * 0.4) throw new Error(`歩行者を追跡できたのは ${detected}/${n} フレームでした。全身が映るように撮り直すか、「歩行者を選び直す」で別の場面から選んでください。`);
   S.res = computeAll();
+  S.mkRate = null;
+  if (MK.on && S.view === "side" && S.frames.some(f => f.blobs)) { applyMarkers(); S.res = computeAll(); }
   const multi = S.frames.some(f => f.all.length > 1);
   setStatus(`解析完了：${detected}/${n} フレームで${multi ? "選んだ歩行者を追跡" : "骨格を検出"}。動画を再生すると推定骨格を重ねて表示します${multi ? "（灰色の線は計測に使っていない人）" : ""}。`);
   $("snap").disabled = false;
@@ -812,7 +846,7 @@ function poseCost(c, ref, dx, dy) {
 }
 // 選んだ人を起点に、前後のフレームへ最も姿勢の近い人をつないでいく
 function track(seed, k) {
-  S.frames.forEach(f => f.lm = null);
+  S.frames.forEach(f => { f.lm = null; f.lmSrc = null; f.mk = null; }); // 前回のシール補正も消す
   S.frames[seed].lm = S.frames[seed].all[k];
   const scale = 30 / S.fps;
   for (const dir of [1, -1]) {
@@ -884,6 +918,145 @@ $("reselect").addEventListener("click", () => {
   openPicker(cur && cur.all.length > 1 ? S.frames.indexOf(cur) : seedFrame());
 });
 
+// ---------- マーカー（シール）で関節位置を補正 ----------
+// AIの推定位置で「どの関節か」の見当をつけ、近くにある登録色のシールの中心を関節位置として使う
+const MK = { on: false, side: "R", color: null };
+const MK_SENS = { narrow: { h: 12, s: 0.5, v: 0.35 }, std: { h: 20, s: 0.38, v: 0.3 }, wide: { h: 30, s: 0.25, v: 0.22 } };
+const MK_PRESET = { pink: [330, 0.75, 0.95], green: [100, 0.7, 0.85], orange: [25, 0.85, 0.95], blue: [210, 0.75, 0.8] };
+// [名前, 右側の番号, 左側の番号, 必須か]
+const MK_JOINTS = [["肩峰", 12, 11, 1], ["大転子", 24, 23, 1], ["膝外側", 26, 25, 1], ["外果", 28, 27, 1], ["第5中足骨頭", 32, 31, 1], ["踵", 30, 29, 0]];
+const mkCv = document.createElement("canvas"), mkCtx = mkCv.getContext("2d", { willReadFrequently: true });
+function rgb2hsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [(h * 60 + 360) % 360, mx ? d / mx : 0, mx];
+}
+function mkThreshold() {
+  const c = MK.color, s = MK_SENS[$("mkSens").value];
+  return { h: c[0], tol: s.h, smin: Math.min(s.s, c[1] * 0.6), vmin: Math.min(s.v, c[2] * 0.5) };
+}
+// 1フレームから登録色の塊（シール候補）を探す。persons があれば人物の周囲だけを調べる
+function detectBlobs(v, persons) {
+  if (!MK.color) return null;
+  const W = v.videoWidth, H = v.videoHeight;
+  let x0 = 0, y0 = 0, x1 = W, y1 = H;
+  if (persons && persons.length) {
+    const xs = persons.flatMap(p => p.map(q => q.x * W)), ys = persons.flatMap(p => p.map(q => q.y * H));
+    const mx = (Math.max(...xs) - Math.min(...xs)) * 0.25 + 20, my = (Math.max(...ys) - Math.min(...ys)) * 0.1 + 20;
+    x0 = Math.max(0, Math.floor(Math.min(...xs) - mx)); x1 = Math.min(W, Math.ceil(Math.max(...xs) + mx));
+    y0 = Math.max(0, Math.floor(Math.min(...ys) - my)); y1 = Math.min(H, Math.ceil(Math.max(...ys) + my));
+  } else if (persons) return [];
+  const w = x1 - x0, h = y1 - y0; if (w < 4 || h < 4) return [];
+  if (mkCv.width !== W || mkCv.height !== H) { mkCv.width = W; mkCv.height = H; }
+  mkCtx.drawImage(v, 0, 0, W, H);
+  const px = mkCtx.getImageData(x0, y0, w, h).data, T = mkThreshold(), mask = new Uint8Array(w * h);
+  for (let i = 0, j = 0; j < mask.length; i += 4, j++) {
+    const [hh, ss, vv] = rgb2hsv(px[i], px[i + 1], px[i + 2]);
+    const dh = Math.abs(hh - T.h);
+    mask[j] = Math.min(dh, 360 - dh) <= T.tol && ss >= T.smin && vv >= T.vmin ? 1 : 0;
+  }
+  // つながった画素をまとめて1つのシールとみなす
+  const out = [], stack = [], maxA = W * H * 0.004;
+  for (let j = 0; j < mask.length; j++) {
+    if (mask[j] !== 1) continue;
+    let n = 0, sx = 0, sy = 0, bx0 = w, by0 = h, bx1 = 0, by1 = 0;
+    mask[j] = 2; stack.push(j);
+    while (stack.length) {
+      const k = stack.pop(), x = k % w, y = (k - x) / w;
+      n++; sx += x; sy += y; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+      if (x > 0 && mask[k - 1] === 1) { mask[k - 1] = 2; stack.push(k - 1); }
+      if (x < w - 1 && mask[k + 1] === 1) { mask[k + 1] = 2; stack.push(k + 1); }
+      if (y > 0 && mask[k - w] === 1) { mask[k - w] = 2; stack.push(k - w); }
+      if (y < h - 1 && mask[k + w] === 1) { mask[k + w] = 2; stack.push(k + w); }
+    }
+    const fill = n / ((bx1 - bx0 + 1) * (by1 - by0 + 1));
+    if (n >= 6 && n <= maxA && fill > 0.3) out.push({ x: (x0 + sx / n) / W, y: (y0 + sy / n) / H, a: n });
+  }
+  return out;
+}
+// 追跡した歩行者の関節を、近くのシールの位置に置き換える
+function applyMarkers() {
+  const ri = MK.side === "R" ? 1 : 2, W = S.W, H = S.H, cnt = MK_JOINTS.map(() => 0);
+  let frames = 0, prev = MK_JOINTS.map(() => null);
+  for (const [fi, f] of S.frames.entries()) {
+    if (!f.lm || !f.blobs) continue;
+    frames++;
+    const L = f.lm, d2 = (a, b) => Math.hypot((a.x - b.x) * W, (a.y - b.y) * H);
+    const leg = d2(L[MK_JOINTS[1][ri]], L[MK_JOINTS[3][ri]]) || 100, gate = Math.max(25, leg * 0.22);
+    const pairs = [];
+    MK_JOINTS.forEach((J, ji) => {
+      const est = L[J[ri]], pv = prev[ji] && fi - prev[ji].fi <= 3 ? prev[ji] : null;
+      f.blobs.forEach((b, bi) => {
+        const dAI = d2(b, est); if (dAI > leg * 0.4) return; // AIの推定から離れすぎたシールは使わない
+        const d = pv ? Math.min(d2(b, pv), dAI) : dAI;
+        if (d <= gate) pairs.push([d, ji, bi]);
+      });
+    });
+    pairs.sort((a, b) => a[0] - b[0]);
+    const usedJ = new Set(), usedB = new Set(), lm = L.map(q => ({ ...q })), mk = [];
+    for (const [, ji, bi] of pairs) {
+      if (usedJ.has(ji) || usedB.has(bi)) continue;
+      usedJ.add(ji); usedB.add(bi);
+      const b = f.blobs[bi], J = MK_JOINTS[ji];
+      lm[J[ri]] = { x: b.x, y: b.y, v: 1 };
+      if (ji < 2) lm[J[3 - ri]] = { x: b.x, y: b.y, v: 1 }; // 側方では肩・股関節は左右が重なるため、反対側も同じ位置に
+      mk.push({ x: b.x, y: b.y, name: J[0] }); cnt[ji]++; prev[ji] = { x: b.x, y: b.y, fi };
+    }
+    f.lmSrc = f.lm; f.lm = lm; f.mk = mk;
+  }
+  S.mkRate = MK_JOINTS.map((J, ji) => ({ name: J[0], req: J[3], rate: frames ? cnt[ji] / frames : 0 }));
+}
+function mkSummary() {
+  if (!S.mkRate) return "";
+  return `マーカー補正（${MK.side === "R" ? "右" : "左"}側）：` + S.mkRate.map(x => `${x.name} ${Math.round(x.rate * 100)}%`).join("・");
+}
+function mkUI() {
+  MK.on = $("mkOn").checked; MK.side = $("mkSide").value;
+  const c = $("mkColor").value;
+  if (c !== "custom") MK.color = MK_PRESET[c];
+  else if (MK.color && MK.preset) MK.color = null;
+  MK.preset = c !== "custom";
+  $("mkRow").hidden = !MK.on;
+  const sw = $("mkSw");
+  if (MK.color) { const [h, s2, v2] = MK.color; sw.style.background = `hsl(${h.toFixed(0)} ${(s2 * 100).toFixed(0)}% ${(v2 * (1 - s2 / 2) * 100).toFixed(0)}%)`; $("mkSwT").textContent = MK.preset ? "既定の色（登録を推奨）" : "動画から登録済み"; }
+  else { sw.style.background = ""; $("mkSwT").textContent = "未登録（③で動画から登録）"; }
+}
+for (const id of ["mkOn", "mkSide", "mkColor", "mkSens"]) $(id).addEventListener("change", mkUI);
+// 動画をタップしてシールの色を登録する
+$("mkPickBtn").addEventListener("click", () => {
+  const v = $("video"); if (!v.videoWidth) return toast("先に動画を読み込んでください。");
+  v.pause(); $("stage").classList.add("picking");
+  setStatus("動画を止めた状態で、シールの1つをタップしてください。");
+});
+$("overlay").addEventListener("click", e => {
+  if (!$("stage").classList.contains("picking")) return;
+  $("stage").classList.remove("picking");
+  const v = $("video"), c = $("overlay"), b = c.getBoundingClientRect(), W = v.videoWidth, H = v.videoHeight;
+  const x = Math.round((e.clientX - b.left) / b.width * W), y = Math.round((e.clientY - b.top) / b.height * H);
+  mkCv.width = W; mkCv.height = H; mkCtx.drawImage(v, 0, 0, W, H);
+  const r0 = Math.max(2, Math.round(W / 400)), d = mkCtx.getImageData(Math.max(0, x - r0), Math.max(0, y - r0), r0 * 2 + 1, r0 * 2 + 1).data;
+  let R = 0, G = 0, B = 0, n = 0; for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; n++; }
+  const hsv = rgb2hsv(R / n, G / n, B / n);
+  if (hsv[1] < 0.25) { setStatus("タップした場所の色が薄すぎます（白・灰色など）。シールの中心をタップし直してください。", true); return; }
+  MK.color = hsv; $("mkColor").value = "custom"; MK.preset = false; mkUI();
+  mkTest();
+});
+// 今の場面でシールが見つかるか確認する
+function mkTest() {
+  const v = $("video"); if (!v.videoWidth) return toast("先に動画を読み込んでください。");
+  if (!MK.color) return toast("先にシールの色を登録してください。");
+  const blobs = detectBlobs(v, null), c = $("overlay");
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  const ctx = c.getContext("2d"), lw = Math.max(2, c.width / 250);
+  ctx.clearRect(0, 0, c.width, c.height); ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = lw;
+  for (const b of blobs) { ctx.beginPath(); ctx.arc(b.x * c.width, b.y * c.height, lw * 4, 0, 7); ctx.stroke(); }
+  setStatus(`この場面でシールの候補を ${blobs.length} 個見つけました（水色の丸）。貼ったシールすべてに丸が付き、余分な丸が少なければOKです。足りなければ「色の判定の幅」を広く、余分が多ければ狭くしてください。`);
+}
+$("mkTestBtn").addEventListener("click", mkTest);
+mkUI();
+
 // ---------- 骨格の重ね描き ----------
 function clearOverlay() { const c = $("overlay"); c.getContext("2d").clearRect(0, 0, c.width, c.height); }
 function drawFrame(f, ctx, W, H) {
@@ -893,7 +1066,7 @@ function drawFrame(f, ctx, W, H) {
   const lw = Math.max(2, W / 250);
   ctx.lineCap = "round";
   for (const o of f.all || []) {
-    if (o === f.lm) continue;
+    if (o === f.lm || o === f.lmSrc) continue;
     ctx.strokeStyle = "rgba(200,200,200,.7)"; ctx.lineWidth = lw * 0.6;
     for (const [a, b] of BONES) { if (o[a].v < 0.3 || o[b].v < 0.3) continue; ctx.beginPath(); ctx.moveTo(o[a].x * W, o[a].y * H); ctx.lineTo(o[b].x * W, o[b].y * H); ctx.stroke(); }
   }
@@ -913,6 +1086,9 @@ function drawFrame(f, ctx, W, H) {
     ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p.x * W, p.y * H, lw * 1.4, 0, 7); ctx.fill();
     ctx.fillStyle = side(i); ctx.beginPath(); ctx.arc(p.x * W, p.y * H, lw * 0.9, 0, 7); ctx.fill();
   }
+  // シールで補正した関節（水色の丸）
+  ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = lw * 0.8;
+  for (const m of f.mk || []) { ctx.beginPath(); ctx.arc(m.x * W, m.y * H, lw * 3.2, 0, 7); ctx.stroke(); }
 }
 function frameAt(t) { if (!S.frames.length) return null; const i = Math.min(S.frames.length - 1, Math.max(0, Math.round(t * S.fps))); return S.frames[i]; }
 function drawAt(t) { if (S.frames.length) drawFrame(frameAt(t)); }
@@ -1192,7 +1368,7 @@ const TAG = { ok: "良好", warn: "要確認", bad: "課題", na: "計測不可"
 function renderResults() {
   const r = S.res;
   $("secResult").hidden = false;
-  $("resMeta").textContent = `撮影方向：${r.view === "side" ? "側方" : "前後"}${r.autoView ? "（自動判定）" : ""}　解析 ${r.n} フレーム（${S.fps} fps）` +
+  $("resMeta").textContent = (S.mkRate ? mkSummary() + "（シールが見つからなかった場面はAIの推定値を使用）　" : MK.on && r.view !== "side" ? "マーカーは側方撮影のときのみ使えます　" : "") + `撮影方向：${r.view === "side" ? "側方" : "前後"}${r.autoView ? "（自動判定）" : ""}　解析 ${r.n} フレーム（${S.fps} fps）` +
     (r.view === "side" ? `　進行方向：画面の${r.dir > 0 ? "右" : "左"}へ　解析できた歩行周期：左 ${r.cyc.L.cycles}・右 ${r.cyc.R.cycles}` : "");
   renderTable();
   $("chartBox").innerHTML = r.view === "side"
@@ -1348,6 +1524,7 @@ function karteText() {
   const L = [];
   L.push(`【${r ? "歩行動画分析" : "自主練習指導"}】${$("edate").value.replaceAll("-", "/")}${$("pid").value ? "　" + $("pid").value : ""}`);
   L.push(`安全チェック（レッドフラッグ）：${rfText()}`);
+  if (S.mkRate) L.push(mkSummary());
   if (r) {
     L.push(`撮影方向：${r.view === "side" ? "側方" : "前後"}　補助具：${$("aid").value}`);
     for (const x of rows()) L.push(`・${x.label}：${x.val.replace(/<[^>]+>/g, "")}${x.note ? "（" + x.note + "）" : ""}　[${TAG[x.st]}]`);
