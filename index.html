@@ -195,7 +195,7 @@ body.has-bar .toast { bottom: 84px; }
       <div class="row" id="pickBtns"></div>
     </div>
     <div class="stage" id="stage">
-      <video id="video" playsinline controls muted></video>
+      <video id="video" playsinline controls muted preload="auto"></video>
       <canvas id="overlay"></canvas>
     </div>
   </section>
@@ -307,28 +307,62 @@ $("capture").addEventListener("change", e => loadFile(e.target.files[0]));
 $("pick").addEventListener("change", e => loadFile(e.target.files[0]));
 
 // ---------- 姿勢推定 ----------
+// 一定時間で終わらない処理を打ち切る（スマホで止まったまま進まないのを防ぐ）
+const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
+// 経過秒数つきで状況を表示し、どこで止まっているか分かるようにする
+async function step(msg, p) {
+  const t0 = Date.now();
+  setStatus(msg);
+  const iv = setInterval(() => setStatus(`${msg}（${Math.round((Date.now() - t0) / 1000)}秒経過）`), 1000);
+  try { return await p; } finally { clearInterval(iv); }
+}
+// iPhone・iPad の Safari は GPU 処理が不安定なため CPU で処理する
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
 async function getLandmarker(model) {
   if (S.landmarker && S.modelName === model) return S.landmarker;
-  setStatus("AIモデルを読み込んでいます…（初回は数十秒かかることがあります）");
-  const { FilesetResolver, PoseLandmarker } = await import(VISION_URL + "/vision_bundle.mjs");
-  const fileset = await FilesetResolver.forVisionTasks(VISION_URL + "/wasm");
+  const { FilesetResolver, PoseLandmarker } = await step("AIの準備中 1/3：プログラムを読み込んでいます…",
+    withTimeout(import(VISION_URL + "/vision_bundle.mjs"), 60000, "AIのプログラムを読み込めませんでした。通信状態を確認してください。"));
+  const fileset = await step("AIの準備中 2/3：処理エンジンを読み込んでいます…",
+    withTimeout(FilesetResolver.forVisionTasks(VISION_URL + "/wasm"), 60000, "AIの処理エンジンを読み込めませんでした。通信状態を確認してください。"));
   const opts = d => ({ baseOptions: { modelAssetPath: MODEL_URL(model), delegate: d }, runningMode: "VIDEO", numPoses: 3,
     minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
+  const msg = `AIの準備中 3/3：モデル（${{ lite: "約6MB", full: "約9MB", heavy: "約30MB" }[model]}）を読み込んでいます…`;
   let lm;
-  try { lm = await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
-  catch { lm = await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
+  if (!IS_IOS) try { lm = await step(msg, withTimeout(PoseLandmarker.createFromOptions(fileset, opts("GPU")), 30000, "GPU timeout")); } catch (e) { console.warn(e); }
+  if (!lm) lm = await step(msg, withTimeout(PoseLandmarker.createFromOptions(fileset, opts("CPU")), 90000, "AIモデルを読み込めませんでした。通信状態を確認するか、精度を「高速」にして試してください。"));
   if (S.landmarker) S.landmarker.close();
   S.landmarker = lm; S.modelName = model;
   return lm;
 }
 
-const seek = (v, t) => new Promise(res => { const h = () => { v.removeEventListener("seeked", h); res(); }; v.addEventListener("seeked", h); v.currentTime = t; });
+// 指定時刻へ移動し、その時刻の映像が使える状態になるまで待つ（イベントが来なくても最大3秒で先へ進む）
+function seek(v, t) {
+  return new Promise(res => {
+    let done = false;
+    const fin = ok => { if (done) return; done = true; v.removeEventListener("seeked", h); clearTimeout(tm); res(ok); };
+    const h = () => v.readyState >= 2 ? fin(true) : v.addEventListener("loadeddata", () => fin(true), { once: true });
+    const tm = setTimeout(() => fin(v.readyState >= 2), 3000);
+    v.addEventListener("seeked", h);
+    if (Math.abs(v.currentTime - t) < 1e-4 && v.readyState >= 2) return fin(true);
+    v.currentTime = t;
+  });
+}
+// 動画の読み込みを始めさせる（iPhone は再生操作をしないと映像データを読み込まない）
+async function primeVideo(v) {
+  if (v.readyState >= 2) return;
+  v.muted = true;
+  try { await withTimeout(v.play(), 5000, "play"); } catch {}
+  v.pause();
+  if (v.readyState < 2) await withTimeout(new Promise(r => { v.addEventListener("loadeddata", r, { once: true }); v.load(); }), 15000,
+    "動画を読み込めませんでした。動画の下の▶で一度再生してから、もう一度「解析を開始」を押してください。");
+}
 
 $("run").addEventListener("click", async () => {
   const v = $("video");
   $("run").disabled = true; $("snap").disabled = true;
   try {
-    if (v.readyState < 1) await new Promise(r => v.addEventListener("loadedmetadata", r, { once: true }));
+    await step("動画を読み込んでいます…", primeVideo(v)); // ボタン操作の直後に呼ぶ必要がある（iPhone）
     const lm = await getLandmarker($("model").value);
     v.pause();
     const dur = Math.min(v.duration || 0, MAX_SEC);
@@ -337,14 +371,15 @@ $("run").addEventListener("click", async () => {
     S.W = v.videoWidth; S.H = v.videoHeight;
     S.frames = [];
     const n = Math.floor(dur * S.fps);
-    let lastTs = -1;
+    let lastTs = -1, stuck = 0;
+    setStatus(`解析中… 0 / ${n} フレーム`);
     for (let i = 0; i < n; i++) {
       const t = i / S.fps;
-      await seek(v, t);
+      if (!(await seek(v, t)) && ++stuck >= 5) throw new Error("動画の場面を読み込めませんでした。動画の下の▶で一度再生してから、もう一度「解析を開始」を押してください。");
       const ts = Math.max(lastTs + 1, Math.round(t * 1000)); lastTs = ts;
       const r = lm.detectForVideo(v, ts);
       S.frames.push({ t, all: (r.landmarks || []).map(ps => ps.map(p => ({ x: p.x, y: p.y, v: p.visibility ?? 1 }))), lm: null });
-      if (i % 3 === 0) { $("bar").style.width = (100 * (i + 1) / n).toFixed(1) + "%"; setStatus(`解析中… ${i + 1} / ${n} フレーム`); drawFrame(S.frames[i]); }
+      if (i % 3 === 0) { $("bar").style.width = (100 * (i + 1) / n).toFixed(1) + "%"; setStatus(`解析中… ${i + 1} / ${n} フレーム`); drawFrame(S.frames[i]); await new Promise(r => setTimeout(r)); }
     }
     $("bar").style.width = "100%";
     const multi = S.frames.filter(f => f.all.length > 1).length;
