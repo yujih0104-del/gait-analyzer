@@ -133,6 +133,28 @@ table.m td.n { font-family: var(--f-num); white-space: nowrap; }
 .fig .hld { fill: #e8590c; stroke: #fff; stroke-width: 1.2; }
 .fig .ar { stroke: #1c7ed6; stroke-width: 2.4; }
 .fig .arh { fill: #1c7ed6; stroke: none; }
+.exc { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; background: var(--surface); }
+.exhd { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.exhd .nm { font-family: var(--f-display); font-size: 17px; }
+.dz2 { font-size: 14px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 14px; padding: 2px 12px; white-space: nowrap; }
+:root[data-theme="dark"] .dz2 { color: #0d1a1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dz2 { color: #0d1a1c; } }
+.tgt { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+.tgt b { color: var(--ink); }
+.exbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 8px; }
+@media (min-width: 640px) { .exbody { grid-template-columns: 280px 1fr; align-items: start; } }
+.figanim { max-width: 320px; width: 100%; margin: 0 auto; }
+.figanim .tip { font-size: 12px; font-weight: 700; color: var(--ink-2); display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.figanim .tip i { width: 14px; height: 8px; border-radius: 4px; background: #e8590c; display: inline-block; }
+.figanim .cap { text-align: center; font-size: 14px; margin-top: 4px; min-height: 2.9em; line-height: 1.45; }
+.figanim .cap b { color: var(--accent); }
+ol.steps { margin: 0; padding-left: 1.5em; font-size: 15px; }
+ol.steps li { margin: 4px 0; }
+ol.steps li::marker { font-weight: 700; color: var(--accent); }
+.exc .pt { background: var(--warn-soft); border-radius: 6px; padding: 6px 10px; font-size: 14px; margin-top: 8px; }
+.exc .caution { font-size: 13px; color: var(--bad); margin-top: 6px; }
+.exc .pick { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-weight: 700; cursor: pointer; }
+.exc .pick input { width: 20px; height: 20px; accent-color: var(--accent); }
 textarea.out { width: 100%; min-height: 220px; font-family: var(--f-num); font-size: 13px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
 .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; z-index: 10; max-width: calc(100% - 32px); }
@@ -174,6 +196,8 @@ body.has-bar .toast { bottom: 84px; }
 #handout, #report { display: none; }
 @page { size: A4; margin: 14mm 12mm; }
 @media print {
+  #handout ol.steps { margin: 2px 0; padding-left: 1.4em; font-size: 14px; }
+  #handout ol.steps li { margin: 1px 0; }
   /* 端末が暗い配色でも、印刷は必ず白い紙向けの色にする */
   :root, :root:not([data-theme="light"]), :root[data-theme="dark"] {
     --bg: #fff; --surface: #fff; --surface-2: #e9eeec; --ink: #1b2a2f; --ink-2: #4a5b60; --muted: #7a8a8e; --line: #d3dcda;
@@ -547,6 +571,106 @@ function figHTML(key) {
     <figure>${svg(drawFig(A, null, true) + drawFig(B, f.hl) + (f.arrow ? drawArrow(f.arrow, A, B) : ""), f.cap[1])}<figcaption><b>②</b> ${f.cap[1]}</figcaption></figure>
   </div></div>`;
 }
+
+// ---------- 練習の説明（効く場所・手順・ポイント）とカード表示 ----------
+const GUIDE = {
+  iliopsoasStretch: { target: "股関節の前（脚の付け根）", steps: ["片膝立ちになる（後ろの膝の下にタオルを敷くと痛くない）", "お尻を軽く締めて、骨盤を後ろに倒す", "上体をまっすぐ保ったまま、体をゆっくり前へ移す"], point: "後ろ脚の付け根の前が伸びればOK。腰は反らさない" },
+  bridge: { target: "お尻・太ももの裏", steps: ["仰向けで膝を立て、足を腰幅に開く", "お尻をゆっくり持ち上げ、肩から膝までを一直線にする", "2秒止めて、ゆっくり下ろす"], point: "お尻をキュッと締める。腰を反らしすぎない" },
+  standHipExt: { target: "お尻", steps: ["台につかまって、まっすぐ立つ", "膝を伸ばしたまま、片脚を後ろへ引く", "ゆっくり元に戻す"], point: "上体を前に倒さない。お尻の筋肉で脚を引く" },
+  rfStretch: { target: "太ももの前", steps: ["横向きに寝る（下の膝は軽く曲げる）", "上の脚の足首を手で持つ", "かかとをお尻に近づけて、太ももの前を伸ばす"], point: "腰を反らさない。膝が痛むときは無理をしない" },
+  seatedKneeFlex: { target: "膝（曲げる動き）", steps: ["椅子に座る", "足裏を床に滑らせて、足を椅子の下へ引き、膝を深く曲げる", "足を前へ滑らせて、膝を伸ばす"], point: "痛みの出ない範囲で、テンポよく大きく動かす" },
+  marching: { target: "脚の付け根（脚を持ち上げる筋肉）", steps: ["台につかまって、まっすぐ立つ", "片方の膝を前へ高く上げる", "ゆっくり下ろし、反対の脚も同じように"], point: "上体を後ろに倒さない" },
+  quadSet: { target: "太ももの前", steps: ["脚を伸ばして座り、膝の下に丸めたタオルを置く", "膝の裏でタオルを床に押しつぶすように力を入れる", "5秒保って、力を抜く"], point: "太ももの前が硬くなればOK。つま先は天井へ" },
+  sitToStand: { target: "太もも・お尻", steps: ["椅子に浅めに座り、腕を胸の前で組む", "おじぎをするように体を前に倒して、立ち上がる", "3秒かけて、ゆっくり座る"], point: "膝が内側に入らないように。難しければ手すりや机を使う" },
+  hamStretch: { target: "太ももの裏", steps: ["椅子に浅く座り、片脚を前に伸ばす（かかとは床、つま先は上）", "背筋を伸ばしたまま、脚の付け根から上体を前へ倒す", "太ももの裏が伸びたところで止める"], point: "背中を丸めない。おへそを膝に近づけるイメージ" },
+  calfStretch: { target: "ふくらはぎ", steps: ["壁に両手をつき、脚を前後に開く", "後ろ脚の膝を伸ばし、かかとを床につけておく", "前の膝を曲げて、体重を前へ移す"], point: "後ろ足のつま先はまっすぐ前へ。かかとを浮かせない" },
+  toeRaise: { target: "すね（つまずき予防）", steps: ["椅子に座り、足を床につける", "かかとはつけたまま、つま先をできるだけ高く上げる", "ゆっくり下ろす"], point: "すねの前に力が入るのを感じる" },
+  heelStrikeWalk: { target: "歩き方（かかとからの着地）", steps: ["いつもより少し大きめの歩幅で一歩出す", "つま先を上げて、かかとから床に着く", "足裏全体に体重を乗せて、次の一歩へ"], point: "最初は見守りのある場所で、ゆっくり" },
+  trunkExt: { target: "背中", steps: ["椅子に座り、両手を頭の後ろで組む", "胸を天井へ向けるように張って、背中を伸ばす", "3秒保って、ゆっくり戻す"], point: "腰ではなく、背中の上のほうを反らす" },
+  metronome: { target: "歩くリズム", steps: ["メトロノームのアプリを、今の歩調より少し速いテンポにする", "音に合わせて1歩ずつ歩く", "左右が同じリズムになるよう意識する"], point: "速さより、左右均等なリズムを大切に" },
+  weightShift: { target: "バランス", steps: ["台の前に、足を肩幅に開いて立つ", "ゆっくり右へ体重を移し、3秒乗る", "左へも同じように移す"], point: "弱い側の脚にもしっかり乗る。上体は傾けず、腰ごと移す" },
+  stepPractice: { target: "バランス・脚の力", steps: ["まっすぐ立つ", "片脚を一歩前に出して、体重を乗せる", "元の位置に戻る"], point: "前に出した脚で体を支える感覚を大切に" },
+  strideWalk: { target: "歩幅", steps: ["床に目印（テープなど）を、少し広めの間隔で貼る", "目印に合わせて、大股で歩く", "慣れたら間隔を少しずつ広げる"], point: "つまずかないよう、周りを片付けてから" },
+  clamshell: { target: "お尻の横", steps: ["横向きに寝て、膝を曲げる", "かかとをつけたまま、上の膝を開く", "ゆっくり閉じる"], point: "上半身は動かさない。骨盤が後ろに倒れないように" },
+  sideLegRaise: { target: "お尻の横", steps: ["横向きに寝る（下の脚は軽く曲げる）", "上の脚を、膝を伸ばしたまま斜め後ろ上へ上げる", "ゆっくり下ろす"], point: "つま先は正面のまま。体を後ろに倒さない" },
+  singleLeg: { target: "バランス", steps: ["台につかまって、まっすぐ立つ", "片方の膝を軽く上げて、片脚で立つ", "10〜30秒保つ"], point: "腰の高さを水平に、上体をまっすぐに。必ず支えのそばで" },
+  sideStep: { target: "お尻の横・バランス", steps: ["台やキッチンに沿って立つ", "つま先を前に向けたまま、横へ一歩出す", "反対の足を寄せる。これをくり返す"], point: "体を傾けず、まっすぐのまま横へ進む" },
+  heelRaise: { target: "ふくらはぎ", steps: ["台につかまって、まっすぐ立つ", "かかとを上げて、つま先立ちになる", "ゆっくり下ろす"], point: "親指の付け根に体重を乗せる" },
+  chinTuck: { target: "首の後ろ", steps: ["背筋を伸ばして座る", "目線は正面のまま、あごを水平に後ろへ引く（二重あごを作る）", "5秒保って、戻す"], point: "下を向かない。頭を後ろへスライドさせる" },
+  pecStretch: { target: "胸の前", steps: ["壁の横に立ち、肩の高さで手のひらを壁につける", "腕はそのままで、体を前へ出す", "胸の前が伸びたところで止める"], point: "肩に痛みが出るときは、手の位置を下げる" },
+  scapSqueeze: { target: "肩甲骨のまわり", steps: ["椅子に座り、肘を曲げる", "胸を張りながら、肘を後ろへ引く", "左右の肩甲骨を寄せて、5秒保つ"], point: "肩をすくめない" },
+  upperTrapStretch: { target: "首から肩", steps: ["背筋を伸ばして座るか立つ", "頭を横に倒し、倒した側の手を頭に軽く添える", "反対側の首から肩が伸びたところで止める"], point: "頭を倒すとき、肩が一緒に上がらないように" },
+  pelvicTilt: { target: "お腹・腰", steps: ["仰向けで膝を立てる", "お腹に力を入れ、腰と床のすき間をつぶすように押しつける", "5秒保って、力を抜く"], point: "息を止めない。ベッドの上でもOK" },
+  drawIn: { target: "お腹の奥", steps: ["仰向けで膝を立て、鼻から息を吸う", "口から細く長く吐きながら、お腹をへこませる", "へこませたまま、浅い呼吸で10秒"], point: "座ったままでもできる" },
+  kneeExt: { target: "太ももの前", steps: ["椅子に深く座る", "片方の膝をまっすぐ伸ばし、つま先を天井へ向ける", "3秒保ち、ゆっくり下ろす"], point: "太ももの前に力が入るのを感じる" },
+  sideBend: { target: "わき腹", steps: ["足を肩幅に開いて立つ", "片腕を上げる", "反対側へ体をゆっくり倒し、わき腹を伸ばす"], point: "前かがみにならず、真横に倒す" },
+};
+for (const [k, g] of Object.entries(GUIDE)) if (EX[k]) Object.assign(EX[k], g);
+// 注意がポイントと同じ内容なら重ねて出さない（末尾の句点の有無は無視）
+const cautionOf = x => x.caution && x.caution.replace(/。$/, "") !== (x.point || "").replace(/。$/, "") ? x.caution : "";
+const stepsHTML = x => x.steps ? `<ol class="steps">${x.steps.map(s => `<li>${s}</li>`).join("")}</ol>` : `<div class="how">${x.how}</div>`;
+
+// 画面用の練習カード：動くイラスト・効く場所・手順・ポイント・注意
+function exCard(e, checked) {
+  const x = EX[e];
+  return `<div class="exc"><div class="exhd"><b class="nm">${x.name}</b><span class="dz2">${x.dose}</span></div>
+    ${x.target ? `<div class="tgt">効く場所：<b>${x.target}</b></div>` : ""}
+    <div class="exbody">${figAnimHTML(e)}<div class="extx">${stepsHTML(x)}${x.point ? `<div class="pt">💡 ${x.point}</div>` : ""}${cautionOf(x) ? `<div class="caution">⚠ ${cautionOf(x)}</div>` : ""}</div></div>
+    <label class="pick"><input type="checkbox" data-ex="${e}" ${checked ? "checked" : ""}>この練習をメニューに入れる</label></div>`;
+}
+// 印刷用：手順つきの説明と、2コマのイラスト
+function exPrint(k, i) {
+  const x = EX[k];
+  return `<div class="hx"><div class="ht"><b>${i + 1}. ${x.name}</b><div class="dz">回数：${x.dose}</div>${x.target ? `<div>効く場所：${x.target}</div>` : ""}${stepsHTML(x)}${x.point ? `<div>💡 ${x.point}</div>` : ""}${cautionOf(x) ? `<div class="cz">⚠ ${cautionOf(x)}</div>` : ""}<div class="chk">実施　□月 □火 □水 □木 □金 □土 □日</div></div>${figHTML(k)}</div>`;
+}
+
+// ---------- 動くイラスト ----------
+// ①の姿勢 → ②の姿勢 → 戻る、をくり返す。動きを減らす設定の端末では2コマの静止画にする
+const REDUCE_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ANIM_T = [1.2, 1.0, 1.8, 1.0]; // ①で止まる・②へ動く・②で止まる・①へ戻る（秒）
+function figAnimHTML(key) {
+  const f = FIG[key]; if (!f) return "";
+  if (REDUCE_MOTION) return figHTML(key);
+  const t = FIG_TIP[key];
+  const tipT = !(f.hl && f.hl.length) ? "" : !t ? "の所に力を入れる" : t.startsWith("伸") ? "の所が" + t : t.startsWith("の") ? t : "の所" + t;
+  return `<div class="figanim" data-fig="${key}">${tipT ? `<div class="tip"><i></i>オレンジ色${tipT}</div>` : ""}<div class="fig"><svg role="img" aria-label="${f.cap[0]} → ${f.cap[1]}"></svg></div><div class="cap"></div></div>`;
+}
+const animCache = {};
+function animData(key) {
+  if (animCache[key]) return animCache[key];
+  const f = FIG[key], [A, B] = f.p.map(solvePose), [x0, y0, w, h] = figBox(f, A, B);
+  const floor = `<rect class="fl" x="${x0}" y="${FG + 1.3}" width="${w}" height="${y0 + h - FG}"/><line class="gr" x1="${x0}" y1="${FG + 1.3}" x2="${x0 + w}" y2="${FG + 1.3}"/>`;
+  return (animCache[key] = { f, A, B, vb: `${x0.toFixed(1)} ${y0.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`, bg: floor + drawProps(f.props) });
+}
+function lerpPose(A, B, k) {
+  const J = { ...B };
+  for (const key in A) if (Array.isArray(A[key])) J[key] = [A[key][0] + (B[key][0] - A[key][0]) * k, A[key][1] + (B[key][1] - A[key][1]) * k];
+  return J;
+}
+let animLast = 0;
+function animTick(now) {
+  requestAnimationFrame(animTick);
+  if (now - animLast < 33) return; // 約30コマ/秒
+  animLast = now;
+  const cyc = ANIM_T.reduce((a, b) => a + b, 0), vh = innerHeight;
+  for (const el of document.querySelectorAll(".figanim")) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > vh || !r.width) continue;
+    const d = animData(el.dataset.fig), svg = el.querySelector("svg");
+    if (!svg.getAttribute("viewBox")) svg.setAttribute("viewBox", d.vb);
+    let t = (now / 1000) % cyc, k, phase;
+    if (t < ANIM_T[0]) { k = 0; phase = 0; }
+    else if ((t -= ANIM_T[0]) < ANIM_T[1]) { k = t / ANIM_T[1]; phase = 1; }
+    else if ((t -= ANIM_T[1]) < ANIM_T[2]) { k = 1; phase = 1; }
+    else { k = 1 - (t - ANIM_T[2]) / ANIM_T[3]; phase = 0; }
+    k = k * k * (3 - 2 * k); // ゆっくり動き出して、ゆっくり止まる
+    const J = lerpPose(d.A, d.B, k);
+    svg.innerHTML = d.bg + drawFig(J, d.f.hl) + (phase && d.f.arrow ? drawArrow(d.f.arrow, d.A, d.B) : "");
+    const cap = el.querySelector(".cap"), txt = `<b>${phase ? "②" : "①"}</b> ${d.f.cap[phase]}`;
+    if (cap.dataset.p !== String(phase)) { cap.innerHTML = txt; cap.dataset.p = phase; }
+  }
+}
+if (!REDUCE_MOTION) requestAnimationFrame(animTick);
 
 const S = { file: null, url: null, frames: [], fps: 30, W: 0, H: 0, view: "side", res: null, issues: [], picked: new Set(), landmarker: null, modelName: null };
 
@@ -1105,9 +1229,7 @@ const GROUPS = [
   ["バランス", ["weightShift", "stepPractice", "singleLeg", "sideStep"]],
   ["歩行練習", ["heelStrikeWalk", "metronome", "strideWalk"]],
 ];
-const exItem = e => `<label class="ex"><input type="checkbox" data-ex="${e}" ${S.picked.has(e) ? "checked" : ""}>
-  <span><b>${EX[e].name}</b><span class="dose">${EX[e].dose}</span>
-  <div class="how">${EX[e].how}</div>${EX[e].caution ? `<div class="caution">注意：${EX[e].caution}</div>` : ""}${figHTML(e)}</span></label>`;
+const exItem = e => exCard(e, S.picked.has(e));
 
 // ---------- 安全チェック（レッドフラッグ） ----------
 // em：すぐ受診・救急（練習は提示しない）、dr：運動の前に受診（医師の許可が確認できれば提示）
@@ -1249,7 +1371,7 @@ function updateOutputs() {
   $("handout").innerHTML = `<h1>あなたの自主練習メニュー</h1>
     <div>${$("edate").value.replaceAll("-", "/")}${patientName() ? "　" + esc(patientName()) + " 様" : ""}</div>
     <p>毎日の生活の中で、無理のない範囲で続けましょう。痛みや体調の変化があれば中止して担当者に相談してください。</p>` +
-    keys.map((k, i) => { const x = EX[k]; return `<div class="hx"><div class="ht"><b>${i + 1}. ${x.name}</b><div class="dz">回数：${x.dose}</div><div>${x.how}</div>${x.caution ? `<div class="cz">⚠ ${x.caution}</div>` : ""}<div class="chk">実施　□月 □火 □水 □木 □金 □土 □日</div></div>${figHTML(k)}</div>`; }).join("");
+    keys.map(exPrint).join("");
 }
 const esc = t => t.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
