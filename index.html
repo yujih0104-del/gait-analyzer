@@ -1,0 +1,796 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>歩行動画分析</title>
+<meta name="description" content="スマートフォン等で撮影した歩行動画から姿勢推定AIで関節角度・ケイデンス・左右差を計測し、歩行の課題と自主練習メニューを提案するツール。動画は端末内で処理し、外部に送信しません。">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 上から ①撮影・読み込み ②解析（骨格を重ねた動画）③計測結果とグラフ ④課題と練習メニュー（カルテ用コピー・患者向け印刷） */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --surface-2: #e9eeec;
+  --ink: #1b2a2f;
+  --ink-2: #4a5b60;
+  --muted: #7a8a8e;
+  --line: #d3dcda;
+  --accent: #1f6f78;
+  --accent-soft: #d6ebec;
+  --ok: #2e7d4f;
+  --warn: #8a6a12;
+  --bad: #b5532f;
+  --warn-soft: #f7ecd8;
+  --bad-soft: #f6e1d8;
+  --left: #2f6db5;       /* 左下肢 */
+  --right: #c0602a;      /* 右下肢 */
+  --f-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --f-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111a1c; --surface: #182427; --surface-2: #213034; --ink: #e4ecea; --ink-2: #b2c1c0; --muted: #84979a;
+    --line: #2f4247; --accent: #5fb5bd; --accent-soft: #1d3a3e; --ok: #6cc191; --warn: #e0b552; --bad: #e3875f;
+    --warn-soft: #3a2f1c; --bad-soft: #3d241b; --left: #78a9e6; --right: #ec9a62; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111a1c; --surface: #182427; --surface-2: #213034; --ink: #e4ecea; --ink-2: #b2c1c0; --muted: #84979a;
+  --line: #2f4247; --accent: #5fb5bd; --accent-soft: #1d3a3e; --ok: #6cc191; --warn: #e0b552; --bad: #e3875f;
+  --warn-soft: #3a2f1c; --bad-soft: #3d241b; --left: #78a9e6; --right: #ec9a62; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+header { padding: 20px 0 8px; }
+header h1 { font-size: 24px; font-weight: 900; }
+header p { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; margin-top: 16px; }
+.card h2 { font-size: 18px; display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.card h2 .no { font-family: var(--f-num); color: var(--accent); font-size: 15px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+label.f { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+input[type=text], input[type=number], input[type=date], select {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; min-width: 0;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { font: inherit; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; text-decoration: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] .btn.primary { color: #0d1a1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #0d1a1c; } }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn input[type=file] { display: none; }
+.hint { font-size: 13px; color: var(--ink-2); }
+.tips { margin: 8px 0 0; padding-left: 1.2em; font-size: 13px; color: var(--ink-2); }
+.tips li { margin: 2px 0; }
+.stage { position: relative; background: #000; border-radius: var(--r); overflow: hidden; max-width: 720px; margin: 12px auto 0; }
+.stage video, .stage canvas { display: block; width: 100%; height: auto; }
+.stage canvas { position: absolute; inset: 0; height: 100%; pointer-events: none; }
+.progress { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-top: 10px; }
+.progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+.status { font-size: 13px; color: var(--ink-2); margin-top: 6px; min-height: 1.6em; }
+.status.err { color: var(--bad); font-weight: 700; }
+table.m { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.m th, table.m td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+table.m th { font-weight: 700; color: var(--ink-2); font-size: 12px; background: var(--surface-2); }
+table.m td.n { font-family: var(--f-num); white-space: nowrap; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+.tag.ok { color: var(--ok); background: var(--surface-2); }
+.tag.warn { color: var(--warn); background: var(--warn-soft); }
+.tag.bad { color: var(--bad); background: var(--bad-soft); }
+.tag.na { color: var(--muted); background: var(--surface-2); }
+.l { color: var(--left); font-weight: 700; } .r { color: var(--right); font-weight: 700; }
+.tablewrap { overflow-x: auto; }
+.chart { width: 100%; height: auto; margin-top: 8px; }
+.chart text { font-family: var(--f-body); font-size: 11px; fill: var(--ink-2); }
+.issue { border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 6px; padding: 10px 12px; margin-top: 10px; }
+.issue.bad { border-left-color: var(--bad); }
+.issue h3 { font-size: 16px; }
+.issue p { margin: 4px 0 0; font-size: 14px; }
+.issue .cause { color: var(--ink-2); font-size: 13px; }
+.ex { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 8px 0; border-top: 1px dashed var(--line); }
+.ex:first-of-type { margin-top: 8px; }
+.ex input { margin-top: 5px; width: 18px; height: 18px; }
+.ex b { font-size: 15px; }
+.ex .dose { font-family: var(--f-num); font-size: 13px; color: var(--accent); margin-left: 6px; }
+.ex .how { font-size: 13px; color: var(--ink-2); }
+.ex .caution { font-size: 12px; color: var(--bad); }
+textarea.out { width: 100%; min-height: 220px; font-family: var(--f-num); font-size: 13px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; z-index: 10; max-width: calc(100% - 32px); }
+details.more { margin-top: 14px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
+details.more summary { cursor: pointer; font-weight: 700; }
+details.more h4 { margin: 12px 0 0; font-size: 13px; color: var(--accent); }
+.printbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -4px 12px rgba(0,0,0,.08); }
+.printbar .cnt { align-self: center; font-size: 13px; color: var(--ink-2); }
+body.has-bar .wrap { padding-bottom: 96px; }
+body.has-bar .toast { bottom: 84px; }
+#handout, #report { display: none; }
+@page { size: A4; margin: 14mm 12mm; }
+@media print {
+  body { background: #fff; color: #000; }
+  .wrap > *:not(#handout):not(#report), .printbar, .toast { display: none !important; }
+  body.has-bar .wrap { padding: 0; }
+  body[data-print="handout"] #handout, body[data-print="report"] #report { display: block; font-size: 14px; }
+  #report h1 { font-size: 20px; margin-bottom: 2px; }
+  #report h2 { font-size: 15px; margin: 14px 0 4px; border-bottom: 2px solid #1f6f78; }
+  #report .meta2 { font-size: 13px; }
+  #report table.m { font-size: 12px; }
+  #report table.m th { background: #eee; }
+  #report .chart { max-height: 150px; break-inside: avoid; }
+  #report .snapimg { max-width: 60%; max-height: 260px; display: block; margin: 6px 0; border: 1px solid #999; }
+  #report ol { margin: 4px 0; padding-left: 1.4em; font-size: 13px; }
+  #report .issue { break-inside: avoid; }
+  #report .note { color: #555; }
+  #handout h1 { font-size: 22px; margin-bottom: 4px; }
+  #handout .hx { border: 1px solid #999; border-radius: 6px; padding: 8px 12px; margin-top: 10px; break-inside: avoid; }
+  #handout .hx b { font-size: 16px; }
+  #handout .chk { float: right; font-size: 12px; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>歩行動画分析</h1>
+    <p>歩行を撮影 → AIで骨格を推定 → 関節角度・リズム・左右差を計測 → 課題と練習メニューを提案します。動画はこの端末の中だけで処理し、外部には送信しません。</p>
+  </header>
+
+  <section class="card">
+    <h2><span class="no">1</span>対象と撮影</h2>
+    <div class="grid2">
+      <label class="f">患者ID・氏名（任意）<input type="text" id="pid" autocomplete="off" placeholder="例）12345 山田"></label>
+      <label class="f">評価日<input type="date" id="edate"></label>
+      <label class="f">歩行補助具
+        <select id="aid"><option>なし</option><option>T字杖</option><option>4点杖</option><option>歩行器</option><option>平行棒</option><option>短下肢装具</option><option>その他</option></select>
+      </label>
+      <label class="f">撮影方向
+        <select id="view">
+          <option value="auto">自動判定</option>
+          <option value="side">側方（横から）</option>
+          <option value="front">前後（正面・後ろから）</option>
+        </select>
+      </label>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <label class="btn primary">📷 撮影する<input type="file" id="capture" accept="video/*" capture="environment"></label>
+      <label class="btn">🎞 動画を選ぶ<input type="file" id="pick" accept="video/*"></label>
+      <button class="btn" id="menuOnly" type="button">🖨 練習メニューだけ作って印刷（動画なし）</button>
+      <span class="hint" id="fileName"></span>
+    </div>
+    <ul class="tips">
+      <li><b>側方</b>：カメラを腰の高さに固定し、進行方向に対して真横から撮影。全身（頭〜足先）が映る距離で、3〜4歩以上が入るように。関節角度・ケイデンス・左右の歩行リズムを計測します。</li>
+      <li><b>前後</b>：正面または真後ろから撮影。骨盤の傾き（トレンデレンブルグ徴候）・体幹の側方動揺を計測します。</li>
+      <li>明るい場所で、体の線が分かる服装・背景がすっきりした場所が理想です。1本の動画は 5〜20 秒程度が目安（最大 60 秒まで解析）。</li>
+    </ul>
+  </section>
+
+  <section class="card" id="secAnalyze" hidden>
+    <h2><span class="no">2</span>解析</h2>
+    <div class="row">
+      <button class="btn primary" id="run">解析を開始</button>
+      <label class="f" style="flex-direction:row;align-items:center;gap:6px">精度
+        <select id="model"><option value="full">標準</option><option value="heavy">高精度（遅い）</option><option value="lite">高速</option></select>
+      </label>
+      <button class="btn" id="snap" disabled>この場面を画像で保存</button>
+    </div>
+    <div class="progress"><i id="bar"></i></div>
+    <div class="status" id="status">動画を確認して「解析を開始」を押してください。</div>
+    <div class="stage" id="stage">
+      <video id="video" playsinline controls muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+  </section>
+
+  <section class="card" id="secResult" hidden>
+    <h2><span class="no">3</span>計測結果</h2>
+    <div class="hint" id="resMeta"></div>
+    <div class="tablewrap"><table class="m" id="metrics"></table></div>
+    <div id="chartBox"></div>
+    <h3 style="font-size:15px;margin-top:16px">10m歩行の実測値（任意・入力すると速度も判定）</h3>
+    <div class="row" style="margin-top:6px">
+      <label class="f">10m の所要時間（秒）<input type="number" id="t10" min="1" step="0.1" inputmode="decimal" style="width:130px"></label>
+      <label class="f">歩数（歩）<input type="number" id="s10" min="1" step="1" inputmode="numeric" style="width:110px"></label>
+    </div>
+  </section>
+
+  <section class="card" id="secPlan" hidden>
+    <h2><span class="no">4</span>課題と練習メニュー</h2>
+    <div class="hint">チェックを入れた練習が、カルテ用文章と患者さん向け印刷に入ります。回数や内容は対象者に合わせて調整してください。</div>
+    <div id="issues"></div>
+    <details class="more" id="more"><summary>ほかの練習を追加する</summary><div id="moreList"></div></details>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="copyKarte">カルテ用にコピー</button>
+    </div>
+    <textarea class="out" id="karte" readonly aria-label="カルテ用文章"></textarea>
+    <p class="note">※ 本ツールの値は単眼カメラ映像からの2次元推定値です。撮影角度・服装・補助具・映り込みで誤差が生じます。参考値として扱い、評価・プログラムの決定は担当療法士の観察と臨床判断で行ってください。</p>
+  </section>
+
+  <div id="handout"></div>
+  <div id="report"></div>
+</div>
+<div class="printbar" id="printbar" hidden>
+  <span class="cnt" id="pickCnt"></span>
+  <button class="btn primary" id="print">🖨 患者さん用 練習メニューを印刷</button>
+  <button class="btn" id="printReport">🖨 評価結果を印刷</button>
+</div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const VISION_VER = "0.10.14";
+const VISION_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VISION_VER}`;
+const MODEL_URL = m => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${m}/float16/1/pose_landmarker_${m}.task`;
+const MAX_SEC = 60;
+
+// MediaPipe Pose のランドマーク番号
+const P = { nose: 0, earL: 7, earR: 8, shL: 11, shR: 12, hipL: 23, hipR: 24, kneeL: 25, kneeR: 26, ankL: 27, ankR: 28, heelL: 29, heelR: 30, toeL: 31, toeR: 32 };
+const BONES = [[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[27,29],[29,31],[27,31],[24,26],[26,28],[28,30],[30,32],[28,32],[11,13],[13,15],[12,14],[14,16]];
+
+// 判定基準（成人の健常歩行の目安。2D推定の誤差を見込んでやや広めに設定）
+const TH = {
+  kneeSwing: 45,      // 遊脚期の最大膝屈曲がこれ未満 → 膝屈曲不足（健常 約60°）
+  kneeStance: 15,     // 立脚中期の膝屈曲がこれ超 → 膝伸展不足（健常 0〜10°）
+  hipExt: 5,          // 立脚後期の最大股関節伸展がこれ未満 → 股関節伸展不足（健常 10〜20°）
+  ankleIC: -10,       // 初期接地時の足関節がこれ未満（底屈）→ 踵接地の欠如（健常 0°前後）
+  trunkFwd: 10,       // 体幹前傾の平均がこれ超
+  cadenceLow: 95,     // 歩/分（健常 100〜120）
+  asym: 10,           // 歩行時間の左右差（%）
+  sideDiff: 10,       // 関節角度の左右差（°）
+  pelvicDrop: 6,      // 骨盤下制（°）
+  latLean: 6,         // 体幹側方傾斜（°）
+};
+
+const EX = {
+  iliopsoasStretch: { name: "股関節前面（腸腰筋）のストレッチ", how: "片膝立ちになり、骨盤を後ろに倒したまま体をゆっくり前へ移す。後ろ脚の付け根の前側が伸びる位置で止める。", dose: "30秒×3回／左右", caution: "腰を反らさない。ふらつく場合は台につかまる。" },
+  bridge: { name: "ブリッジ（お尻上げ）", how: "仰向けで膝を立て、お尻を持ち上げて肩〜膝が一直線になったら2秒止め、ゆっくり下ろす。", dose: "10回×2セット", caution: "腰を反りすぎない。" },
+  standHipExt: { name: "立って脚を後ろへ引く運動", how: "台につかまって立ち、膝を伸ばしたまま片脚をゆっくり後ろへ引いて戻す。上体は起こしたまま。", dose: "10回×2セット／左右", caution: "上体を前に倒して代償しない。" },
+  rfStretch: { name: "太もも前面（大腿直筋）のストレッチ", how: "横向きに寝て、上の脚の足首を持ち、かかとをお尻へ近づける。", dose: "30秒×3回／左右", caution: "腰を反らさない。膝に痛みが出る場合は中止。" },
+  seatedKneeFlex: { name: "座って膝を大きく曲げ伸ばし", how: "椅子に座り、足裏を床に滑らせて膝を深く曲げ、伸ばす。テンポよく繰り返す。", dose: "15回×2セット／左右" },
+  marching: { name: "もも上げ", how: "台につかまって立ち、膝を前へ高く引き上げて下ろす。左右交互に。", dose: "20回×2セット", caution: "支持物のそばで行う。" },
+  quadSet: { name: "膝裏でタオルを押す運動（大腿四頭筋）", how: "脚を伸ばして座り、膝裏に丸めたタオルを置く。膝裏でタオルを押しつぶすように太ももに力を入れ5秒保つ。", dose: "10回×2セット／左右" },
+  sitToStand: { name: "椅子からの立ち座り", how: "腕を胸の前で組み、椅子から立ち上がってゆっくり座る。", dose: "10回×2セット", caution: "膝が内側に入らないように。難しければ手すりを使用。" },
+  hamStretch: { name: "太もも裏（ハムストリングス）のストレッチ", how: "椅子に浅く座って片脚を前に伸ばし、背筋を伸ばしたまま上体を前へ倒す。", dose: "30秒×3回／左右" },
+  calfStretch: { name: "ふくらはぎのストレッチ", how: "壁に手をつき、後ろ脚の膝を伸ばしてかかとを床につけたまま体重を前へ移す。", dose: "30秒×3回／左右" },
+  toeRaise: { name: "つま先上げ（すねの筋肉）", how: "座ってかかとを床につけたまま、つま先をできるだけ高く持ち上げて下ろす。", dose: "20回×2セット" },
+  heelStrikeWalk: { name: "かかとから着く歩行練習", how: "「かかと→つま先」を意識して、ゆっくり大きめの歩幅で歩く。", dose: "10m×5往復", caution: "つまずきに注意し、見守り下で開始。" },
+  trunkExt: { name: "胸を張る体幹の伸展運動", how: "椅子に座り両手を頭の後ろで組み、胸を張って背中を伸ばし3秒止める。", dose: "10回×2セット" },
+  metronome: { name: "リズムに合わせた歩行", how: "メトロノーム（スマホアプリ可）の音に合わせて歩く。今の歩調より5〜10%速いテンポから始める。", dose: "2〜3分×3回", caution: "速さより左右均等なリズムを優先。" },
+  weightShift: { name: "左右への体重移動", how: "台の前で肩幅に立ち、左右へゆっくり体重を移して片側に3秒ずつ乗る。弱い側へしっかり乗る。", dose: "10往復×2セット" },
+  stepPractice: { name: "前後へのステップ練習", how: "片脚を一歩前に出して体重を乗せ、元に戻る。弱い側の脚での支持を意識する。", dose: "10回×2セット／左右", caution: "支持物のそばで行う。" },
+  strideWalk: { name: "歩幅を広げる歩行練習", how: "床に目印（テープなど）を貼り、それに合わせていつもより大きな歩幅で歩く。", dose: "10m×5往復" },
+  clamshell: { name: "クラムシェル（お尻の横の筋肉）", how: "横向きに寝て膝を曲げ、かかとをつけたまま上の膝を開いて閉じる。", dose: "15回×2セット／左右", caution: "骨盤が後ろへ倒れないように。" },
+  sideLegRaise: { name: "横向きで脚を上げる運動（中殿筋）", how: "横向きに寝て下の脚は軽く曲げ、上の脚を膝を伸ばしたままやや後ろ斜め上へ持ち上げる。", dose: "10回×2セット／左右", caution: "体を後ろに倒さない。" },
+  singleLeg: { name: "片脚立ち（支持あり）", how: "台につかまり片脚で立つ。骨盤を水平に、上体をまっすぐに保つ。", dose: "10〜30秒×3回／左右", caution: "転倒に注意し、必ず支持物のそばで。" },
+  sideStep: { name: "横歩き", how: "台やキッチンに沿って、つま先を前に向けたまま横へ歩く。", dose: "5m×3往復" },
+  heelRaise: { name: "かかと上げ", how: "台につかまって立ち、つま先立ちになってゆっくり下ろす。", dose: "15回×2セット" },
+};
+
+const S = { file: null, url: null, frames: [], fps: 30, W: 0, H: 0, view: "side", res: null, issues: [], picked: new Set(), landmarker: null, modelName: null };
+
+// ---------- 初期化 ----------
+const today = new Date(); $("edate").value = new Date(today.getTime() - today.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const toast = msg => { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), 2600); };
+const setStatus = (msg, err) => { $("status").textContent = msg; $("status").classList.toggle("err", !!err); };
+
+function loadFile(f) {
+  if (!f) return;
+  if (S.url) URL.revokeObjectURL(S.url);
+  S.file = f; S.url = URL.createObjectURL(f); S.frames = []; S.res = null;
+  $("fileName").textContent = f.name;
+  $("video").src = S.url;
+  $("secAnalyze").hidden = false; $("secResult").hidden = true; $("secPlan").hidden = true; setBar(false);
+  $("snap").disabled = true; $("bar").style.width = "0";
+  clearOverlay();
+  setStatus("動画を確認して「解析を開始」を押してください。");
+  $("secAnalyze").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+$("capture").addEventListener("change", e => loadFile(e.target.files[0]));
+$("pick").addEventListener("change", e => loadFile(e.target.files[0]));
+
+// ---------- 姿勢推定 ----------
+async function getLandmarker(model) {
+  if (S.landmarker && S.modelName === model) return S.landmarker;
+  setStatus("AIモデルを読み込んでいます…（初回は数十秒かかることがあります）");
+  const { FilesetResolver, PoseLandmarker } = await import(VISION_URL + "/vision_bundle.mjs");
+  const fileset = await FilesetResolver.forVisionTasks(VISION_URL + "/wasm");
+  const opts = d => ({ baseOptions: { modelAssetPath: MODEL_URL(model), delegate: d }, runningMode: "VIDEO", numPoses: 1,
+    minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
+  let lm;
+  try { lm = await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
+  catch { lm = await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
+  if (S.landmarker) S.landmarker.close();
+  S.landmarker = lm; S.modelName = model;
+  return lm;
+}
+
+const seek = (v, t) => new Promise(res => { const h = () => { v.removeEventListener("seeked", h); res(); }; v.addEventListener("seeked", h); v.currentTime = t; });
+
+$("run").addEventListener("click", async () => {
+  const v = $("video");
+  $("run").disabled = true; $("snap").disabled = true;
+  try {
+    if (v.readyState < 1) await new Promise(r => v.addEventListener("loadedmetadata", r, { once: true }));
+    const lm = await getLandmarker($("model").value);
+    v.pause();
+    const dur = Math.min(v.duration || 0, MAX_SEC);
+    if (!(dur > 1)) throw new Error("動画の長さを読み取れませんでした。別の形式（MP4など）で試してください。");
+    S.fps = dur > 30 ? 15 : dur > 15 ? 20 : 30;
+    S.W = v.videoWidth; S.H = v.videoHeight;
+    S.frames = [];
+    const n = Math.floor(dur * S.fps);
+    let lastTs = -1;
+    for (let i = 0; i < n; i++) {
+      const t = i / S.fps;
+      await seek(v, t);
+      const ts = Math.max(lastTs + 1, Math.round(t * 1000)); lastTs = ts;
+      const r = lm.detectForVideo(v, ts);
+      S.frames.push({ t, lm: r.landmarks && r.landmarks[0] ? r.landmarks[0].map(p => ({ x: p.x, y: p.y, v: p.visibility ?? 1 })) : null });
+      if (i % 3 === 0) { $("bar").style.width = (100 * (i + 1) / n).toFixed(1) + "%"; setStatus(`解析中… ${i + 1} / ${n} フレーム`); drawFrame(S.frames[i]); }
+    }
+    $("bar").style.width = "100%";
+    const detected = S.frames.filter(f => f.lm).length;
+    if (detected < n * 0.4) throw new Error(`人物を検出できたのは ${detected}/${n} フレームでした。全身が映るように撮り直してください。`);
+    S.res = computeAll();
+    setStatus(`解析完了：${detected}/${n} フレームで骨格を検出。動画を再生すると推定骨格を重ねて表示します。`);
+    $("snap").disabled = false;
+    await seek(v, 0); drawAt(0);
+    renderResults();
+    renderPlan();
+    $("secResult").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    console.error(e);
+    setStatus("解析できませんでした：" + (e.message || e) + (String(e).includes("import") || String(e).includes("fetch") ? "（AIモデルの読み込みにはインターネット接続が必要です）" : ""), true);
+  } finally { $("run").disabled = false; }
+});
+
+// ---------- 骨格の重ね描き ----------
+function clearOverlay() { const c = $("overlay"); c.getContext("2d").clearRect(0, 0, c.width, c.height); }
+function drawFrame(f, ctx, W, H) {
+  const c = $("overlay");
+  if (!ctx) { c.width = S.W || c.width; c.height = S.H || c.height; ctx = c.getContext("2d"); W = c.width; H = c.height; ctx.clearRect(0, 0, W, H); }
+  if (!f || !f.lm) return;
+  const lw = Math.max(2, W / 250);
+  const css = getComputedStyle(document.documentElement);
+  const colL = css.getPropertyValue("--left").trim(), colR = css.getPropertyValue("--right").trim();
+  const side = i => (i % 2 === 1 ? colL : colR); // 奇数番号が左
+  ctx.lineCap = "round";
+  for (const [a, b] of BONES) {
+    const p = f.lm[a], q = f.lm[b];
+    if (p.v < 0.3 || q.v < 0.3) continue;
+    ctx.strokeStyle = a === 11 && b === 12 || a === 23 && b === 24 ? "#ffffff" : side(a);
+    ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(p.x * W, p.y * H); ctx.lineTo(q.x * W, q.y * H); ctx.stroke();
+  }
+  for (const i of [11, 12, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]) {
+    const p = f.lm[i]; if (p.v < 0.3) continue;
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p.x * W, p.y * H, lw * 1.4, 0, 7); ctx.fill();
+    ctx.fillStyle = side(i); ctx.beginPath(); ctx.arc(p.x * W, p.y * H, lw * 0.9, 0, 7); ctx.fill();
+  }
+}
+function frameAt(t) { if (!S.frames.length) return null; const i = Math.min(S.frames.length - 1, Math.max(0, Math.round(t * S.fps))); return S.frames[i]; }
+function drawAt(t) { if (S.frames.length) drawFrame(frameAt(t)); }
+(function loop() { const v = $("video"); if (S.res && !v.paused) drawAt(v.currentTime); requestAnimationFrame(loop); })();
+$("video").addEventListener("seeked", () => { if (S.res) drawAt($("video").currentTime); });
+
+$("snap").addEventListener("click", () => {
+  const v = $("video"), c = document.createElement("canvas");
+  c.width = S.W; c.height = S.H; const ctx = c.getContext("2d");
+  ctx.drawImage(v, 0, 0, S.W, S.H); drawFrame(frameAt(v.currentTime), ctx, S.W, S.H);
+  const a = document.createElement("a");
+  a.download = `歩行_${$("edate").value}_${v.currentTime.toFixed(2)}s.png`; a.href = c.toDataURL("image/png"); a.click();
+});
+
+// ---------- 計算の部品 ----------
+const deg = r => r * 180 / Math.PI;
+const nan = NaN;
+const ok = x => Number.isFinite(x);
+const mean = a => { const b = a.filter(ok); return b.length ? b.reduce((s, x) => s + x, 0) / b.length : nan; };
+const pct = (a, p) => { const b = a.filter(ok).sort((x, y) => x - y); if (!b.length) return nan; const k = (b.length - 1) * p, i = Math.floor(k); return b[i] + (b[Math.min(i + 1, b.length - 1)] - b[i]) * (k - i); };
+const median = a => pct(a, 0.5);
+const maxOf = a => { const b = a.filter(ok); return b.length ? Math.max(...b) : nan; };
+const minOf = a => { const b = a.filter(ok); return b.length ? Math.min(...b) : nan; };
+
+// 短い欠損を線形補間し、移動平均で平滑化
+function smooth(a, win = 5, gap = 4) {
+  const b = a.slice();
+  for (let i = 0; i < b.length; i++) {
+    if (ok(b[i])) continue;
+    let j = i; while (j < b.length && !ok(b[j])) j++;
+    if (i > 0 && j < b.length && j - i <= gap) for (let k = i; k < j; k++) b[k] = b[i - 1] + (b[j] - b[i - 1]) * (k - i + 1) / (j - i + 1);
+    i = j;
+  }
+  const h = Math.floor(win / 2);
+  return b.map((_, i) => { if (!ok(b[i])) return nan; let s = 0, n = 0; for (let k = i - h; k <= i + h; k++) if (ok(b[k])) { s += b[k]; n++; } return s / n; });
+}
+function findPeaks(a, minDist, minProm) {
+  const out = [];
+  for (let i = 1; i < a.length - 1; i++) {
+    if (!ok(a[i])) continue;
+    let isMax = true, lo = Infinity;
+    for (let k = i - minDist; k <= i + minDist; k++) { if (k === i || k < 0 || k >= a.length || !ok(a[k])) continue; if (a[k] > a[i]) { isMax = false; break; } }
+    if (!isMax) continue;
+    for (let k = i - 2 * minDist; k <= i + 2 * minDist; k++) if (k >= 0 && k < a.length && ok(a[k])) lo = Math.min(lo, a[k]);
+    if (a[i] - lo >= minProm && (!out.length || i - out[out.length - 1] > minDist)) out.push(i);
+  }
+  return out;
+}
+function angleAt(a, b, c) { // b を頂点とする角度（°）
+  const ux = a.x - b.x, uy = a.y - b.y, vx = c.x - b.x, vy = c.y - b.y;
+  return deg(Math.acos(Math.max(-1, Math.min(1, (ux * vx + uy * vy) / (Math.hypot(ux, uy) * Math.hypot(vx, vy))))));
+}
+const mid = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+
+function computeAll() {
+  const { W, H, fps } = S;
+  const VIS = 0.5;
+  const px = f => f.lm ? f.lm.map(p => ({ x: p.x * W, y: p.y * H, v: p.v })) : null;
+  const pts = S.frames.map(px);
+  const vis = (q, ...ids) => q && ids.every(i => q[i].v >= VIS);
+
+  // 撮影方向の判定：肩幅 / 体幹長 が小さければ側方
+  const ratio = median(pts.map(q => vis(q, P.shL, P.shR, P.hipL, P.hipR) ? Math.abs(q[P.shL].x - q[P.shR].x) / Math.hypot(mid(q[P.shL], q[P.shR]).x - mid(q[P.hipL], q[P.hipR]).x, mid(q[P.shL], q[P.shR]).y - mid(q[P.hipL], q[P.hipR]).y) : nan));
+  const sel = $("view").value;
+  S.view = sel === "auto" ? (ratio < 0.45 ? "side" : "front") : sel;
+
+  const res = { view: S.view, autoView: sel === "auto", n: pts.length, t: S.frames.map(f => f.t) };
+  if (S.view === "side") Object.assign(res, sideMetrics(pts, vis, fps));
+  else Object.assign(res, frontMetrics(pts, vis, fps));
+  return res;
+}
+
+function sideMetrics(pts, vis, fps) {
+  // 進行方向：鼻が耳より前にある向き（カメラが追従して撮っても判定できる）
+  const dir = Math.sign(median(pts.map(q => q && q[P.nose].v > 0.5 ? q[P.nose].x - mid(q[P.earL], q[P.earR]).x : nan))) || 1;
+  const sides = { L: { hip: P.hipL, knee: P.kneeL, ank: P.ankL, heel: P.heelL, toe: P.toeL }, R: { hip: P.hipR, knee: P.kneeR, ank: P.ankR, heel: P.heelR, toe: P.toeR } };
+  const legLen = median(pts.flatMap(q => [vis(q, P.hipL, P.ankL) ? Math.hypot(q[P.hipL].x - q[P.ankL].x, q[P.hipL].y - q[P.ankL].y) : nan, vis(q, P.hipR, P.ankR) ? Math.hypot(q[P.hipR].x - q[P.ankR].x, q[P.hipR].y - q[P.ankR].y) : nan]));
+  const trunk = smooth(pts.map(q => {
+    if (!vis(q, P.shL, P.shR, P.hipL, P.hipR)) return nan;
+    const s = mid(q[P.shL], q[P.shR]), h = mid(q[P.hipL], q[P.hipR]);
+    return deg(Math.atan2(dir * (s.x - h.x), h.y - s.y)); // 前傾が正
+  }));
+  const out = { dir, trunk, legLen, series: {}, hs: {} };
+  for (const [k, j] of Object.entries(sides)) {
+    const knee = smooth(pts.map(q => vis(q, j.hip, j.knee, j.ank) ? 180 - angleAt(q[j.hip], q[j.knee], q[j.ank]) : nan));
+    const hip = smooth(pts.map(q => {
+      if (!vis(q, P.shL, P.shR, P.hipL, P.hipR, j.knee)) return nan;
+      const s = mid(q[P.shL], q[P.shR]), h = mid(q[P.hipL], q[P.hipR]);
+      const tx = h.x - s.x, ty = h.y - s.y, vx = q[j.knee].x - q[j.hip].x, vy = q[j.knee].y - q[j.hip].y;
+      return -dir * deg(Math.atan2(tx * vy - ty * vx, tx * vx + ty * vy)); // 屈曲が正・伸展が負
+    }));
+    const ankle = smooth(pts.map(q => {
+      if (!vis(q, j.knee, j.ank, j.heel, j.toe)) return nan;
+      const sx = q[j.knee].x - q[j.ank].x, sy = q[j.knee].y - q[j.ank].y, fx = q[j.toe].x - q[j.heel].x, fy = q[j.toe].y - q[j.heel].y;
+      return 90 - deg(Math.acos(Math.max(-1, Math.min(1, (sx * fx + sy * fy) / (Math.hypot(sx, sy) * Math.hypot(fx, fy)))))); // 背屈が正
+    }));
+    // 足部が骨盤より最も前に出た瞬間を初期接地とみなす
+    const fwd = smooth(pts.map(q => vis(q, P.hipL, P.hipR, j.ank) ? dir * (q[j.ank].x - mid(q[P.hipL], q[P.hipR]).x) / legLen : nan));
+    out.series[k] = { knee, hip, ankle, fwd };
+    out.hs[k] = findPeaks(fwd, Math.round(0.3 * fps), 0.15);
+    // 放物線補間でフレーム間の接地時刻を求める（フレーム単位の丸めで左右差が出るのを防ぐ）
+    out.hsT = out.hsT || {};
+    out.hsT[k] = out.hs[k].map(i => { const a = fwd[i - 1], b = fwd[i], c = fwd[i + 1], q = a - 2 * b + c; return (i + (ok(a) && ok(c) && q < 0 ? 0.5 * (a - c) / q : 0)) / fps; });
+  }
+  // 1歩行周期ごとの指標
+  out.cyc = {};
+  for (const k of ["L", "R"]) {
+    const hs = out.hs[k], s = out.series[k], c = { kneeSwing: [], kneeStance: [], hipExt: [], ankleIC: [], stride: [] };
+    for (let i = 0; i + 1 < hs.length; i++) {
+      const a = hs[i], b = hs[i + 1], T = out.hsT[k][i + 1] - out.hsT[k][i];
+      if (T < 0.6 || T > 2.6) continue;
+      c.stride.push(T);
+      c.kneeSwing.push(maxOf(s.knee.slice(a + Math.round((b - a) * 0.5), b + 1)));
+      c.kneeStance.push(minOf(s.knee.slice(a + Math.round((b - a) * 0.1), a + Math.round((b - a) * 0.4) + 1)));
+      c.hipExt.push(-minOf(s.hip.slice(a, b + 1)));
+    }
+    for (const i of hs) c.ankleIC.push(mean(s.ankle.slice(Math.max(0, i - 1), i + 2)));
+    const enough = c.stride.length >= 1;
+    out.cyc[k] = {
+      cycles: c.stride.length,
+      kneeSwing: enough ? median(c.kneeSwing) : pct(s.knee, 0.97),
+      kneeStance: enough ? median(c.kneeStance) : pct(s.knee, 0.1),
+      hipExt: enough ? median(c.hipExt) : -pct(s.hip, 0.03),
+      ankleIC: median(c.ankleIC),
+      stride: median(c.stride),
+    };
+  }
+  // ステップ時間（反対側の接地 → この側の接地）
+  const ev = [...out.hsT.L.map(t => ({ t, k: "L" })), ...out.hsT.R.map(t => ({ t, k: "R" }))].sort((a, b) => a.t - b.t);
+  const step = { L: [], R: [] };
+  for (let n = 1; n < ev.length; n++) {
+    if (ev[n].k === ev[n - 1].k) continue;
+    const T = ev[n].t - ev[n - 1].t;
+    if (T > 0.25 && T < 1.4) step[ev[n].k].push(T);
+  }
+  out.stepL = median(step.L); out.stepR = median(step.R);
+  const allSteps = [...step.L, ...step.R];
+  out.cadence = allSteps.length >= 2 ? 60 / median(allSteps) : (ok(out.cyc.L.stride) || ok(out.cyc.R.stride) ? 120 / mean([out.cyc.L.stride, out.cyc.R.stride]) : nan);
+  out.asym = ok(out.stepL) && ok(out.stepR) ? 100 * Math.abs(out.stepL - out.stepR) / ((out.stepL + out.stepR) / 2) : nan;
+  out.trunkMean = mean(trunk);
+  out.steps = ev.length;
+  return out;
+}
+
+function frontMetrics(pts, vis, fps) {
+  // 骨盤の傾き：右股関節が下がる向きを正。カメラの傾きを除くため中央値からの変化量で評価
+  const obl = smooth(pts.map(q => vis(q, P.hipL, P.hipR) ? deg(Math.atan2(q[P.hipR].y - q[P.hipL].y, Math.abs(q[P.hipR].x - q[P.hipL].x))) : nan));
+  const base = median(obl);
+  const oblC = obl.map(x => x - base);
+  // 体幹側方傾斜：骨盤の左右軸に投影し、右へ傾く向きを正（正面・後ろどちらから撮っても同じ向き）
+  const lean = smooth(pts.map(q => {
+    if (!vis(q, P.shL, P.shR, P.hipL, P.hipR)) return nan;
+    const s = mid(q[P.shL], q[P.shR]), h = mid(q[P.hipL], q[P.hipR]);
+    const ux = q[P.hipR].x - q[P.hipL].x, uy = q[P.hipR].y - q[P.hipL].y, ul = Math.hypot(ux, uy);
+    const vx = s.x - h.x, vy = s.y - h.y, lat = (vx * ux + vy * uy) / ul;
+    return deg(Math.atan2(lat, Math.hypot(vx - lat * ux / ul, vy - lat * uy / ul)));
+  }));
+  // 骨盤の左右動揺の周期 → 重複歩時間 → ケイデンス
+  const hx = pts.map(q => vis(q, P.hipL, P.hipR) ? mid(q[P.hipL], q[P.hipR]).x / Math.max(1, Math.abs(q[P.hipR].x - q[P.hipL].x)) : nan);
+  const trend = smooth(hx, Math.round(1.6 * fps) | 1, 8);
+  const sway = smooth(hx.map((x, i) => x - trend[i]), 3, 8);
+  let best = { lag: 0, r: 0 };
+  for (let lag = Math.round(0.7 * fps); lag <= Math.round(2.4 * fps); lag++) {
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i + lag < sway.length; i++) { const a = sway[i], b = sway[i + lag]; if (!ok(a) || !ok(b)) continue; sxy += a * b; sxx += a * a; syy += b * b; }
+    const r = sxy / Math.sqrt(sxx * syy || 1);
+    if (r > best.r) best = { lag, r };
+  }
+  const stride = best.r > 0.3 ? best.lag / fps : nan;
+  return {
+    obl: oblC, lean,
+    dropR: pct(oblC, 0.95), dropL: pct(oblC.map(x => -x), 0.95),
+    leanR: pct(lean, 0.95), leanL: pct(lean.map(x => -x), 0.95),
+    stride, cadence: ok(stride) ? 120 / stride : nan,
+  };
+}
+
+// ---------- 判定 ----------
+const f1 = x => ok(x) ? x.toFixed(1) : "—";
+const f0 = x => ok(x) ? Math.round(x).toString() : "—";
+const SIDE = { L: "左", R: "右" };
+
+function manual() {
+  const t = parseFloat($("t10").value), s = parseFloat($("s10").value);
+  return { speed: t > 0 ? 10 / t : nan, cad: t > 0 && s > 0 ? s / t * 60 : nan, stepLen: s > 0 ? 10 / s : nan };
+}
+
+function rows() {
+  const r = S.res, m = manual(), out = [];
+  const judge = (bad, warn) => bad ? "bad" : warn ? "warn" : "ok";
+  if (r.view === "side") {
+    const c = r.cyc;
+    const sideRow = (label, key, normal, test, fmt = f0, unit = "°") => {
+      const v = { L: c.L[key], R: c.R[key] };
+      const st = ["L", "R"].map(k => ok(v[k]) ? (test(v[k]) ? "bad" : "ok") : "na");
+      const diff = Math.abs(v.L - v.R);
+      out.push({ label, val: `<span class="l">左 ${fmt(v.L)}${unit}</span> / <span class="r">右 ${fmt(v.R)}${unit}</span>`, normal,
+        st: st.includes("bad") ? "bad" : ok(diff) && diff > TH.sideDiff && unit === "°" ? "warn" : st.includes("ok") ? "ok" : "na",
+        note: ok(diff) && unit === "°" ? `左右差 ${f0(diff)}°` : "" });
+    };
+    sideRow("遊脚期の最大膝屈曲", "kneeSwing", "約60°（45°未満で不足）", x => x < TH.kneeSwing);
+    sideRow("立脚中期の膝屈曲", "kneeStance", "0〜10°（15°超で伸展不足）", x => x > TH.kneeStance);
+    sideRow("立脚後期の最大股関節伸展", "hipExt", "10〜20°（5°未満で不足）", x => x < TH.hipExt);
+    sideRow("初期接地時の足関節（背屈＋）", "ankleIC", "0°前後（−10°未満で踵接地なし）", x => x < TH.ankleIC);
+    out.push({ label: "体幹前傾（平均）", val: f0(r.trunkMean) + "°", normal: "0〜5°（10°超で前傾）", st: ok(r.trunkMean) ? judge(r.trunkMean > TH.trunkFwd, r.trunkMean > 5) : "na" });
+    out.push({ label: "ケイデンス（動画）", val: f0(r.cadence) + " 歩/分", normal: "100〜120 歩/分", st: ok(r.cadence) ? judge(r.cadence < TH.cadenceLow, r.cadence < 100) : "na", note: `検出した接地 ${r.steps} 回` });
+    const f2 = x => ok(x) ? x.toFixed(2) : "—";
+    out.push({ label: "ステップ時間（左 / 右）", val: `<span class="l">左 ${f2(r.stepL)}秒</span> / <span class="r">右 ${f2(r.stepR)}秒</span>`,
+      normal: "左右差 10%以内", st: ok(r.asym) ? judge(r.asym > TH.asym * 1.5, r.asym > TH.asym) : "na", note: ok(r.asym) ? `左右差 ${f0(r.asym)}%` : "" });
+  } else {
+    out.push({ label: "骨盤の下制（右が下がる）", val: f1(r.dropR) + "°", normal: `${TH.pelvicDrop}°未満`, st: ok(r.dropR) ? judge(r.dropR > TH.pelvicDrop, r.dropR > TH.pelvicDrop - 2) : "na", note: "左立脚期に起こりやすい" });
+    out.push({ label: "骨盤の下制（左が下がる）", val: f1(r.dropL) + "°", normal: `${TH.pelvicDrop}°未満`, st: ok(r.dropL) ? judge(r.dropL > TH.pelvicDrop, r.dropL > TH.pelvicDrop - 2) : "na", note: "右立脚期に起こりやすい" });
+    out.push({ label: "体幹の右側方傾斜（最大）", val: f1(r.leanR) + "°", normal: `${TH.latLean}°未満`, st: ok(r.leanR) ? judge(r.leanR > TH.latLean, r.leanR > TH.latLean - 2) : "na" });
+    out.push({ label: "体幹の左側方傾斜（最大）", val: f1(r.leanL) + "°", normal: `${TH.latLean}°未満`, st: ok(r.leanL) ? judge(r.leanL > TH.latLean, r.leanL > TH.latLean - 2) : "na" });
+    out.push({ label: "ケイデンス（動画）", val: f0(r.cadence) + " 歩/分", normal: "100〜120 歩/分", st: ok(r.cadence) ? judge(r.cadence < TH.cadenceLow, r.cadence < 100) : "na", note: "骨盤の左右動揺の周期から推定" });
+  }
+  if (ok(m.speed)) {
+    out.push({ label: "歩行速度（10m実測）", val: m.speed.toFixed(2) + " m/秒", normal: "1.0 m/秒以上で屋外歩行の目安", st: judge(m.speed < 0.8, m.speed < 1.0),
+      note: m.speed < 0.4 ? "屋内歩行レベル" : m.speed < 0.8 ? "制限付き屋外歩行レベル" : m.speed < 1.0 ? "屋外歩行（やや遅い）" : "屋外歩行レベル" });
+    if (ok(m.cad)) out.push({ label: "ケイデンス・歩幅（10m実測）", val: `${f0(m.cad)} 歩/分・${m.stepLen.toFixed(2)} m`, normal: "歩幅 0.5〜0.7 m", st: judge(m.cad < TH.cadenceLow || m.stepLen < 0.4, m.stepLen < 0.5) });
+  }
+  return out;
+}
+
+function findIssues() {
+  const r = S.res, m = manual(), is = [];
+  const add = (id, sev, title, finding, cause, ex) => is.push({ id, sev, title, finding, cause, ex });
+  const sidesWhere = (key, test) => ["L", "R"].filter(k => ok(r.cyc[k][key]) && test(r.cyc[k][key]));
+  const nameSides = ks => ks.map(k => SIDE[k]).join("・");
+  if (r.view === "side") {
+    const c = r.cyc;
+    let ks = sidesWhere("kneeSwing", x => x < TH.kneeSwing);
+    if (ks.length) add("kneeSwing", "bad", `遊脚期の膝屈曲不足（${nameSides(ks)}）`, `遊脚期の最大膝屈曲が ${ks.map(k => SIDE[k] + f0(c[k].kneeSwing) + "°").join("・")} と少なく、つまずき・分回し歩行につながりやすい状態です。`,
+      "大腿直筋の短縮・過活動、股関節屈曲力の低下、立脚後期の蹴り出し不足など", ["rfStretch", "seatedKneeFlex", "marching", "heelRaise"]);
+    ks = sidesWhere("kneeStance", x => x > TH.kneeStance);
+    if (ks.length) add("kneeStance", "bad", `立脚期の膝伸展不足（${nameSides(ks)}）`, `立脚中期でも膝が ${ks.map(k => SIDE[k] + f0(c[k].kneeStance) + "°").join("・")} 曲がったままで、膝折れ・疲れやすさの原因になります。`,
+      "大腿四頭筋の筋力低下、膝関節・股関節の屈曲拘縮、ハムストリングスの短縮など", ["quadSet", "sitToStand", "hamStretch"]);
+    ks = sidesWhere("hipExt", x => x < TH.hipExt);
+    if (ks.length) add("hipExt", "bad", `立脚後期の股関節伸展不足（${nameSides(ks)}）`, `股関節の最大伸展が ${ks.map(k => SIDE[k] + f0(c[k].hipExt) + "°").join("・")} にとどまり、歩幅が小さくなりやすい状態です。`,
+      "腸腰筋の短縮、殿筋群の筋力低下、体幹前傾による代償など", ["iliopsoasStretch", "bridge", "standHipExt", "strideWalk"]);
+    ks = sidesWhere("ankleIC", x => x < TH.ankleIC);
+    if (ks.length) add("ankleIC", "warn", `踵からの接地が不十分（${nameSides(ks)}）`, `初期接地時の足関節が ${ks.map(k => SIDE[k] + f0(c[k].ankleIC) + "°").join("・")}（底屈位）で、足底全体またはつま先から接地している可能性があります。`,
+      "前脛骨筋の筋力低下、下腿三頭筋の短縮・痙縮、歩幅の減少など（装具の適応も検討）", ["toeRaise", "calfStretch", "heelStrikeWalk"]);
+    for (const key of ["kneeSwing", "hipExt"]) {
+      const d = c.L[key] - c.R[key];
+      if (ok(d) && Math.abs(d) > TH.sideDiff && !is.some(x => x.id === key)) {
+        const weak = d < 0 ? "L" : "R";
+        add(key + "Diff", "warn", `${key === "kneeSwing" ? "膝屈曲" : "股関節伸展"}の左右差（${SIDE[weak]}が小さい）`, `${SIDE[weak]}側の${key === "kneeSwing" ? "遊脚期膝屈曲" : "股関節伸展"}が反対側より ${f0(Math.abs(d))}° 小さくなっています。`,
+          "患側の筋力低下・可動域制限・荷重への不安など", key === "kneeSwing" ? ["seatedKneeFlex", "marching"] : ["iliopsoasStretch", "standHipExt"]);
+      }
+    }
+    if (ok(r.trunkMean) && r.trunkMean > TH.trunkFwd) add("trunk", "warn", "体幹の前傾", `歩行中の体幹前傾が平均 ${f0(r.trunkMean)}° と大きくなっています。`,
+      "股関節の伸展制限、脊柱の後弯、殿筋・背筋群の筋力低下、補助具の高さ不適合など", ["trunkExt", "iliopsoasStretch", "bridge"]);
+    if (ok(r.asym) && r.asym > TH.asym) {
+      const shortSide = r.stepL < r.stepR ? "L" : "R", other = shortSide === "L" ? "R" : "L";
+      add("asym", r.asym > TH.asym * 1.5 ? "bad" : "warn", "歩行リズムの左右差", `ステップ時間に ${f0(r.asym)}% の左右差があります（${SIDE[shortSide]}脚の振り出しが速い ＝ ${SIDE[other]}脚での支持時間が短い傾向）。`,
+        `${SIDE[other]}下肢の支持性低下・荷重への不安、疼痛など`, ["weightShift", "stepPractice", "metronome"]);
+    }
+  } else {
+    if (ok(r.dropR) && r.dropR > TH.pelvicDrop) add("dropR", "bad", "右骨盤の下制（左立脚期）", `左脚で支えている時に右の骨盤が最大 ${f1(r.dropR)}° 下がっています（左のトレンデレンブルグ徴候の疑い）。`,
+      "左中殿筋（股関節外転筋）の筋力低下、左股関節の疼痛など", ["sideLegRaise", "clamshell", "singleLeg", "sideStep"]);
+    if (ok(r.dropL) && r.dropL > TH.pelvicDrop) add("dropL", "bad", "左骨盤の下制（右立脚期）", `右脚で支えている時に左の骨盤が最大 ${f1(r.dropL)}° 下がっています（右のトレンデレンブルグ徴候の疑い）。`,
+      "右中殿筋（股関節外転筋）の筋力低下、右股関節の疼痛など", ["sideLegRaise", "clamshell", "singleLeg", "sideStep"]);
+    for (const [k, v] of [["R", r.leanR], ["L", r.leanL]]) if (ok(v) && v > TH.latLean)
+      add("lean" + k, "warn", `体幹の${SIDE[k]}側への傾き`, `歩行中に体幹が${SIDE[k]}側へ最大 ${f1(v)}° 傾いています（${SIDE[k]}立脚期のデュシェンヌ歩行・代償の疑い）。`,
+        `${SIDE[k]}股関節外転筋の筋力低下、${SIDE[k]}下肢の疼痛・荷重回避、体幹の筋力低下など`, ["weightShift", "singleLeg", "sideLegRaise"]);
+  }
+  const cad = ok(m.cad) ? m.cad : r.cadence;
+  if (ok(cad) && cad < TH.cadenceLow) add("cadence", "warn", "歩行リズム（ケイデンス）の低下", `ケイデンスが ${f0(cad)} 歩/分と少なめです。`, "下肢筋力・バランス能力の低下、恐怖心など", ["metronome", "sitToStand", "heelRaise"]);
+  if (ok(m.speed) && m.speed < 1.0) add("speed", m.speed < 0.8 ? "bad" : "warn", "歩行速度の低下", `10m歩行速度が ${m.speed.toFixed(2)} m/秒です（${m.speed < 0.4 ? "屋内歩行" : m.speed < 0.8 ? "制限付き屋外歩行" : "屋外歩行でやや遅い"}レベル）。${ok(m.stepLen) ? `歩幅は ${m.stepLen.toFixed(2)} m。` : ""}`,
+    "下肢筋力・バランス・持久力の低下など", ok(m.stepLen) && m.stepLen < 0.5 ? ["strideWalk", "sitToStand", "heelRaise"] : ["sitToStand", "heelRaise", "metronome"]);
+  return is;
+}
+
+// ---------- 表示 ----------
+const TAG = { ok: "良好", warn: "要確認", bad: "課題", na: "計測不可" };
+function renderResults() {
+  const r = S.res;
+  $("secResult").hidden = false;
+  $("resMeta").textContent = `撮影方向：${r.view === "side" ? "側方" : "前後"}${r.autoView ? "（自動判定）" : ""}　解析 ${r.n} フレーム（${S.fps} fps）` +
+    (r.view === "side" ? `　進行方向：画面の${r.dir > 0 ? "右" : "左"}へ　解析できた歩行周期：左 ${r.cyc.L.cycles}・右 ${r.cyc.R.cycles}` : "");
+  renderTable();
+  $("chartBox").innerHTML = r.view === "side"
+    ? chart("膝関節屈曲角度の推移（▼＝初期接地）", [{ k: "L", a: r.series.L.knee, hs: r.hs.L }, { k: "R", a: r.series.R.knee, hs: r.hs.R }], 0, 80) +
+      chart("股関節屈曲(+)／伸展(−)角度の推移", [{ k: "L", a: r.series.L.hip }, { k: "R", a: r.series.R.hip }], -30, 50)
+    : chart("骨盤の傾き（+＝右が下がる）", [{ k: "R", a: r.obl }], -15, 15) + chart("体幹の側方傾斜（+＝右へ傾く）", [{ k: "L", a: r.lean }], -20, 20);
+}
+function renderTable() {
+  $("metrics").innerHTML = "<tr><th>項目</th><th>計測値</th><th>目安</th><th>判定</th></tr>" +
+    rows().map(x => `<tr><td>${x.label}${x.note ? `<div class="hint">${x.note}</div>` : ""}</td><td class="n">${x.val}</td><td class="hint">${x.normal}</td><td><span class="tag ${x.st}">${TAG[x.st]}</span></td></tr>`).join("");
+}
+function chart(title, lines, lo, hi) {
+  const W = 700, H = 170, pl = 34, pr = 10, pt = 22, pb = 22, T = S.res.t[S.res.t.length - 1] || 1;
+  const X = t => pl + (W - pl - pr) * t / T, Y = v => pt + (H - pt - pb) * (1 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo));
+  const step = (hi - lo) / 4;
+  let g = `<text x="${pl}" y="14" style="font-weight:700;fill:var(--ink)">${title}</text>`;
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`;
+  for (let s = 0; s <= T; s += T > 20 ? 5 : T > 8 ? 2 : 1) g += `<text x="${X(s)}" y="${H - 6}" text-anchor="middle">${s}秒</text>`;
+  for (const ln of lines) {
+    const col = ln.k === "L" ? "var(--left)" : "var(--right)";
+    let d = "", pen = false;
+    ln.a.forEach((v, i) => { if (ok(v)) { d += (pen ? "L" : "M") + X(S.res.t[i]).toFixed(1) + " " + Y(v).toFixed(1); pen = true; } else pen = false; });
+    g += `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
+    for (const i of ln.hs || []) g += `<path d="M${X(S.res.t[i]) - 4} ${pt - 2}h8l-4 6z" fill="${col}"/>`;
+  }
+  const leg = lines.length > 1 ? `<text x="${W - pr}" y="14" text-anchor="end"><tspan style="fill:var(--left);font-weight:700">― 左</tspan>　<tspan style="fill:var(--right);font-weight:700">― 右</tspan></text>` : "";
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${title}">${g}${leg}</svg>`;
+}
+
+// 「ほかの練習を追加」の分類
+const GROUPS = [
+  ["ストレッチ", ["iliopsoasStretch", "rfStretch", "hamStretch", "calfStretch"]],
+  ["筋力・関節運動", ["bridge", "standHipExt", "seatedKneeFlex", "marching", "quadSet", "sitToStand", "toeRaise", "trunkExt", "clamshell", "sideLegRaise", "heelRaise"]],
+  ["バランス", ["weightShift", "stepPractice", "singleLeg", "sideStep"]],
+  ["歩行練習", ["heelStrikeWalk", "metronome", "strideWalk"]],
+];
+const exItem = e => `<label class="ex"><input type="checkbox" data-ex="${e}" ${S.picked.has(e) ? "checked" : ""}>
+  <span><b>${EX[e].name}</b><span class="dose">${EX[e].dose}</span>
+  <div class="how">${EX[e].how}</div>${EX[e].caution ? `<div class="caution">注意：${EX[e].caution}</div>` : ""}</span></label>`;
+
+function renderPlan() {
+  S.issues = S.res ? findIssues() : [];
+  S.picked = new Set(S.issues.flatMap(x => x.ex.slice(0, 2)));
+  $("secPlan").hidden = false;
+  const shown = new Set();
+  if (!S.res) $("issues").innerHTML = `<p>動画を使わずに練習メニューを作ります。下の一覧から練習を選んで、画面下の「印刷」を押してください。</p>`;
+  else if (S.issues.length) $("issues").innerHTML = S.issues.map(x => `
+    <div class="issue ${x.sev}">
+      <h3>${x.title}</h3>
+      <p>${x.finding}</p>
+      <p class="cause">考えられる要因：${x.cause}</p>
+      ${x.ex.filter(e => !shown.has(e) && shown.add(e)).map(exItem).join("")}
+    </div>`).join("");
+  else {
+    ["sitToStand", "heelRaise", "singleLeg"].forEach(e => { S.picked.add(e); shown.add(e); });
+    $("issues").innerHTML = `<p>判定基準を超える項目はありませんでした。歩行の質を保つための練習を選んでください。</p>` + ["sitToStand", "heelRaise", "singleLeg"].map(exItem).join("");
+  }
+  $("moreList").innerHTML = GROUPS.map(([g, ids]) => { const rest = ids.filter(e => !shown.has(e)); return rest.length ? `<h4>${g}</h4>` + rest.map(exItem).join("") : ""; }).join("");
+  $("more").open = !S.res;
+  $("secPlan").querySelectorAll("input[data-ex]").forEach(cb => cb.addEventListener("change", () => { cb.checked ? S.picked.add(cb.dataset.ex) : S.picked.delete(cb.dataset.ex); updateOutputs(); }));
+  setBar(true);
+  updateOutputs();
+}
+function setBar(on) {
+  $("printbar").hidden = !on;
+  document.body.classList.toggle("has-bar", on);
+  $("printReport").hidden = !S.res;
+}
+
+function karteText() {
+  const r = S.res;
+  const L = [];
+  L.push(`【${r ? "歩行動画分析" : "自主練習指導"}】${$("edate").value.replaceAll("-", "/")}${$("pid").value ? "　" + $("pid").value : ""}`);
+  if (r) {
+    L.push(`撮影方向：${r.view === "side" ? "側方" : "前後"}　補助具：${$("aid").value}`);
+    for (const x of rows()) L.push(`・${x.label}：${x.val.replace(/<[^>]+>/g, "")}${x.note ? "（" + x.note + "）" : ""}　[${TAG[x.st]}]`);
+    L.push("");
+    L.push("【課題】");
+    if (S.issues.length) S.issues.forEach((x, i) => L.push(`${i + 1}. ${x.title}：${x.finding}`));
+    else L.push("判定基準を超える項目なし");
+    L.push("");
+  }
+  L.push("【自主練習プログラム】");
+  for (const e of S.picked) L.push(`・${EX[e].name}　${EX[e].dose}`);
+  if (r) { L.push(""); L.push("※姿勢推定AIによる2D動画解析の参考値。"); }
+  return L.join("\n");
+}
+const patientName = () => $("pid").value.trim().replace(/^\d+\s*/, "");
+function updateOutputs() {
+  $("karte").value = karteText();
+  $("pickCnt").textContent = `練習 ${S.picked.size} 個を選択中`;
+  const items = [...S.picked].map(e => EX[e]);
+  $("handout").innerHTML = `<h1>あなたの自主練習メニュー</h1>
+    <div>${$("edate").value.replaceAll("-", "/")}${patientName() ? "　" + esc(patientName()) + " 様" : ""}</div>
+    <p>毎日の生活の中で、無理のない範囲で続けましょう。痛みや体調の変化があれば中止して担当者に相談してください。</p>` +
+    items.map((x, i) => `<div class="hx"><span class="chk">実施 □月 □火 □水 □木 □金 □土 □日</span><b>${i + 1}. ${x.name}</b><div>回数：${x.dose}</div><div>${x.how}</div>${x.caution ? `<div>⚠ ${x.caution}</div>` : ""}</div>`).join("");
+}
+const esc = t => t.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// 評価結果シート：計測値・グラフ・現在の場面の骨格画像・課題・練習
+function buildReport() {
+  const r = S.res, v = $("video");
+  let img = "";
+  try {
+    const c = document.createElement("canvas"); c.width = S.W; c.height = S.H; const ctx = c.getContext("2d");
+    ctx.drawImage(v, 0, 0, S.W, S.H); drawFrame(frameAt(v.currentTime), ctx, S.W, S.H);
+    img = `<img class="snapimg" src="${c.toDataURL("image/jpeg", 0.85)}" alt="推定骨格（${v.currentTime.toFixed(2)}秒）">`;
+  } catch {}
+  $("report").innerHTML = `<h1>歩行動画分析 評価結果</h1>
+    <div class="meta2">評価日：${$("edate").value.replaceAll("-", "/")}　${$("pid").value ? "対象：" + esc($("pid").value) + "　" : ""}補助具：${$("aid").value}　撮影方向：${r.view === "side" ? "側方" : "前後"}</div>
+    <h2>計測値</h2><table class="m">${$("metrics").innerHTML}</table>
+    <h2>角度の推移</h2>${$("chartBox").innerHTML}${img}
+    <h2>課題</h2>${S.issues.length ? `<ol>${S.issues.map(x => `<li><b>${x.title}</b>：${x.finding}<br><span class="note">考えられる要因：${x.cause}</span></li>`).join("")}</ol>` : "<p>判定基準を超える項目なし</p>"}
+    <h2>自主練習プログラム</h2><ol>${[...S.picked].map(e => `<li>${EX[e].name}　${EX[e].dose}</li>`).join("")}</ol>
+    <p class="note">※ 単眼カメラ映像からの姿勢推定AIによる2次元推定値（参考値）。評価・プログラムの決定は担当療法士の観察と臨床判断による。</p>`;
+}
+function doPrint(mode) {
+  const root = document.documentElement, theme = root.dataset.theme;
+  root.dataset.theme = "light"; // 暗い配色の端末でも白い紙向けの色で印刷する
+  document.body.dataset.print = mode;
+  const done = () => { if (theme) root.dataset.theme = theme; else delete root.dataset.theme; window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  window.print();
+}
+
+for (const id of ["t10", "s10"]) $(id).addEventListener("input", () => { if (!S.res) return; renderTable(); renderPlan(); });
+for (const id of ["pid", "edate", "aid"]) $(id).addEventListener("input", () => { if (!$("secPlan").hidden) updateOutputs(); });
+$("view").addEventListener("change", () => { if (S.frames.length && S.res) { S.res = computeAll(); renderResults(); renderPlan(); } });
+
+$("menuOnly").addEventListener("click", () => {
+  S.res = null; S.frames = [];
+  $("secAnalyze").hidden = true; $("secResult").hidden = true;
+  renderPlan();
+  $("secPlan").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+$("copyKarte").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("karte").value); toast("カルテ用の文章をコピーしました。"); }
+  catch { $("karte").select(); document.execCommand("copy"); toast("コピーしました。"); }
+});
+$("print").addEventListener("click", () => { if (!S.picked.size) return toast("練習メニューを1つ以上選んでください。"); doPrint("handout"); });
+$("printReport").addEventListener("click", () => { buildReport(); doPrint("report"); });
+</script>
