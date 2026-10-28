@@ -102,28 +102,37 @@ table.m td.n { font-family: var(--f-num); white-space: nowrap; }
 .ex .dose { font-family: var(--f-num); font-size: 13px; color: var(--accent); margin-left: 6px; }
 .ex .how { font-size: 13px; color: var(--ink-2); }
 .ex .caution { font-size: 12px; color: var(--bad); }
-.fig { display: flex; align-items: flex-start; gap: 4px; margin: 6px 0 2px; max-width: 420px; }
+.figw { margin: 8px 0 2px; max-width: 460px; }
+.figw .tip { font-size: 12px; font-weight: 700; color: var(--ink-2); display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.figw .tip i { width: 14px; height: 8px; border-radius: 4px; background: #e8590c; display: inline-block; }
+.fig { display: flex; align-items: flex-start; gap: 4px; }
 .fig figure { margin: 0; flex: 1; min-width: 0; }
-.fig svg { display: block; width: 100%; height: auto; background: var(--surface-2); border-radius: 6px; }
-.fig figcaption { font-size: 12px; line-height: 1.4; color: var(--ink); margin-top: 3px; }
-.fig .fa { color: var(--accent); font-size: 14px; align-self: center; margin-top: -1.4em; }
-.fig svg polyline, .fig svg path, .fig svg line, .fig svg circle { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.fig .near { stroke: var(--ink); stroke-width: 2.6; }
-.fig .near circle { fill: var(--surface); }
-.fig .far { stroke: var(--muted); stroke-width: 2.2; }
-.fig .gh { stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 2 2; opacity: .45; }
+.fig svg { display: block; width: 100%; height: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.fig figcaption { font-size: 13px; line-height: 1.45; color: var(--ink); margin-top: 4px; }
+.fig figcaption b { color: var(--accent); }
+.fig .fa { color: var(--accent); font-size: 16px; align-self: center; margin-top: -1.6em; }
+.fig svg polyline, .fig svg path, .fig svg line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* イラストは画面の配色に関係なく白地に描く（印刷と同じ見た目） */
+.fig .near { stroke: #22343a; stroke-width: 5; }
+.fig .near .tr { stroke-width: 8.5; }
+.fig .near .halo { stroke: #fff; stroke-width: 7.5; }
+.fig .hd { fill: #22343a; stroke: #fff; stroke-width: 1.2; }
+.fig .far { stroke: #a8b5b8; stroke-width: 4.6; }
+.fig .gh { stroke: #9aa8ab; stroke-width: 1.3; stroke-dasharray: 2.5 2; fill: none; }
 .fig .gh circle { fill: none; }
-.fig .gr { stroke: var(--ink-2); stroke-width: 1; }
-.fig .pr { stroke: var(--ink-2); stroke-width: 1.6; fill: none; }
-.fig .hatch { stroke: var(--ink-2); stroke-width: .8; }
-.fig .mat { fill: var(--accent-soft); stroke: var(--ink-2); stroke-width: .6; }
-.fig .towel { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1; }
-.fig .tape { fill: var(--warn); }
-.fig .nt { fill: var(--accent); font-size: 12px; font-weight: 700; }
-.fig .hl { stroke: var(--bad); stroke-width: 5.5; opacity: .55; }
-.fig circle.hl { fill: var(--bad); stroke: none; opacity: .5; }
-.fig .ar { stroke: var(--accent); stroke-width: 1.8; }
-.fig .arh { fill: var(--accent); stroke: none; }
+.fig .fl { fill: #eef1f0; }
+.fig .gr { stroke: #8a989b; stroke-width: 1; }
+.fig .pr { stroke: #6f7f83; stroke-width: 2.2; fill: none; stroke-linecap: round; }
+.fig .hatch { stroke: #6f7f83; stroke-width: 1; }
+.fig .mat { fill: #cfe6e8; stroke: #6f9ea3; stroke-width: .6; }
+.fig .towel { fill: #f3d9a6; stroke: #b0812a; stroke-width: 1; }
+.fig .tape { fill: #e0a800; }
+.fig .nt { fill: #1f6f78; font-size: 12px; font-weight: 700; }
+.fig .hl { stroke: #e8590c; }
+.fig .far .hl { stroke: #f08c4f; }
+.fig .hld { fill: #e8590c; stroke: #fff; stroke-width: 1.2; }
+.fig .ar { stroke: #1c7ed6; stroke-width: 2.4; }
+.fig .arh { fill: #1c7ed6; stroke: none; }
 textarea.out { width: 100%; min-height: 220px; font-family: var(--f-num); font-size: 13px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
 .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; z-index: 10; max-width: calc(100% - 32px); }
@@ -142,6 +151,12 @@ body.has-bar .toast { bottom: 84px; }
 #handout, #report { display: none; }
 @page { size: A4; margin: 14mm 12mm; }
 @media print {
+  /* 端末が暗い配色でも、印刷は必ず白い紙向けの色にする */
+  :root, :root:not([data-theme="light"]), :root[data-theme="dark"] {
+    --bg: #fff; --surface: #fff; --surface-2: #e9eeec; --ink: #1b2a2f; --ink-2: #4a5b60; --muted: #7a8a8e; --line: #d3dcda;
+    --accent: #1f6f78; --accent-soft: #d6ebec; --ok: #2e7d4f; --warn: #8a6a12; --bad: #b5532f; --warn-soft: #f7ecd8; --bad-soft: #f6e1d8;
+    --left: #2f6db5; --right: #c0602a; color-scheme: light;
+  }
   body { background: #fff; color: #000; }
   .wrap > *:not(#handout):not(#report), .printbar, .toast { display: none !important; }
   body.has-bar .wrap { padding: 0; }
@@ -157,14 +172,13 @@ body.has-bar .toast { bottom: 84px; }
   #report .issue { break-inside: avoid; }
   #report .note { color: #555; }
   #handout h1 { font-size: 22px; margin-bottom: 4px; }
-  #handout .hx { display: grid; grid-template-columns: 1fr 88mm; gap: 12px; align-items: start; border: 1px solid #999; border-radius: 6px; padding: 8px 12px; margin-top: 8px; break-inside: avoid; font-size: 14px; }
+  #handout .hx { display: grid; grid-template-columns: 1fr 96mm; gap: 12px; align-items: start; border: 1px solid #999; border-radius: 6px; padding: 8px 12px; margin-top: 8px; break-inside: avoid; font-size: 14px; }
   #handout .hx b { font-size: 17px; }
   #handout .dz { font-weight: 700; margin: 2px 0; }
   #handout .cz { margin-top: 2px; }
   #handout .chk { margin-top: 6px; font-size: 13px; }
-  #handout .fig { max-width: none; margin: 0; }
+  #handout .figw { max-width: none; margin: 0; }
   #handout .fig figcaption { font-size: 12px; }
-  .fig svg { background: #fff; border: 1px solid #ccc; }
 }
 </style>
 
@@ -426,47 +440,81 @@ function drawProps(props) {
   for (const o of props || []) {
     if (o.c === "chair") g += `<path class="pr" d="M${o.x - 9} ${FG}V64H${o.x + 8}V${FG}M${o.x - 9} 64V40"/>`;
     if (o.c === "table") { const w = o.w || 20; g += `<path class="pr" d="M${o.x} ${o.y}h${w}M${o.x + 2} ${o.y}V${FG}M${o.x + w - 2} ${o.y}V${FG}"/>`; }
-    if (o.c === "wall") g += `<path class="pr" d="M${o.x} 6V${FG}"/><path class="hatch" d="${Array.from({ length: 9 }, (_, i) => `M${o.x} ${10 + i * 8}l4 -4`).join("")}"/>`;
-    if (o.c === "mat") g += `<rect class="mat" x="8" y="${FG - 1.5}" width="86" height="2.5" rx="1"/>`;
+    if (o.c === "wall") g += `<path class="pr" d="M${o.x} 2V${FG + 1}"/><path class="hatch" d="${Array.from({ length: 9 }, (_, i) => `M${o.x} ${10 + i * 8}l4 -4`).join("")}"/>`;
+    if (o.c === "mat") g += `<rect class="mat" x="8" y="${FG - 0.5}" width="86" height="2.6" rx="1"/>`;
     if (o.c === "towel") g += `<ellipse class="towel" cx="${o.x}" cy="${o.y}" rx="5" ry="2.2"/>`;
     if (o.c === "tape") g += o.xs.map(x => `<rect class="tape" x="${x - 3}" y="${FG - 0.8}" width="6" height="2"/>`).join("");
     if (o.c === "note") g += `<path class="pr" d="M${o.x - 5} ${o.y + 10}L${o.x - 2} ${o.y - 4}H${o.x + 2}L${o.x + 5} ${o.y + 10}ZM${o.x} ${o.y + 7}L${o.x + 4} ${o.y - 1}"/><text class="nt" x="${o.x - 18}" y="${o.y + 4}">♪</text>`;
   }
   return g;
 }
+// 人型ピクトグラム：太い線で手足・胴体を描き、奥側の手足は薄い灰色、手前の手足は縁取りして重なりを見分けやすくする
 function drawFig(J, hl, ghost) {
-  const cls = ghost ? "gh" : "";
-  const leg = s => pl([J["hip" + s], J["knee" + s], J["ank" + s]], "") + (J.nofeet ? "" : pl([J["heel" + s], J["toe" + s]], ""));
-  const arm = s => pl([J["sh" + s], J["elb" + s], J["hand" + s]], "");
-  const body = (J.front ? pl([J.shF, J.shN], "") + pl([J.hipF, J.hipN], "") : "") + pl([J.hip, J.sh], "");
-  const head = `<circle cx="${J.head[0].toFixed(1)}" cy="${J.head[1].toFixed(1)}" r="5.5"/>`;
-  let g = `<g class="far ${cls}">${leg("F")}${arm("F")}</g><g class="near ${cls}">${body}${leg("N")}${arm("N")}${head}</g>`;
-  if (ghost) return g;
-  const seg = { thighN: ["hipN", "kneeN"], shankN: ["kneeN", "ankN"], thighF: ["hipF", "kneeF"], shankF: ["kneeF", "ankF"], trunk: ["hip", "sh"] };
-  for (const h of hl || []) {
-    if (h.startsWith("dot:")) { const q = J[h.slice(4)]; g += `<circle class="hl" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="4"/>`; }
-    else g += pl(seg[h].map(k => J[k]), "hl");
+  const legPts = s => [J["hip" + s], J["knee" + s], J["ank" + s]];
+  const footPts = s => J.nofeet ? null : [J["heel" + s], J["toe" + s]];
+  const armPts = s => [J["sh" + s], J["elb" + s], J["hand" + s]];
+  const headC = `cx="${J.head[0].toFixed(1)}" cy="${J.head[1].toFixed(1)}"`;
+  if (ghost) {
+    const ls = [legPts("F"), footPts("F"), armPts("F"), legPts("N"), footPts("N"), armPts("N"), [J.hip, J.sh]].filter(Boolean);
+    return `<g class="gh">${ls.map(q => pl(q, "")).join("")}<circle ${headC} r="6"/></g>`;
   }
+  const seg = { thighN: ["hipN", "kneeN"], shankN: ["kneeN", "ankN"], thighF: ["hipF", "kneeF"], shankF: ["kneeF", "ankF"], trunk: ["hip", "sh"] };
+  const hls = (hl || []).filter(h => !h.startsWith("dot:"));
+  const hlOf = side => hls.filter(h => side ? h.endsWith(side) : h === "trunk").map(h => pl(seg[h].map(k => J[k]), "hl"));
+  const torso = J.front ? pl([J.shF, J.shN], "tr") + pl([J.hipF, J.hipN], "tr") + pl([J.hip, J.sh], "tr") : pl([J.hip, J.sh], "tr");
+  const near = [legPts("N"), footPts("N"), armPts("N")].filter(Boolean);
+  let g = `<g class="far">${[legPts("F"), footPts("F"), armPts("F")].filter(Boolean).map(q => pl(q, "")).join("")}${hlOf("F").join("")}</g>`;
+  g += `<g class="near">${torso}${hlOf("").join("")}<circle class="hd" ${headC} r="6"/>${near.map(q => pl(q, "halo")).join("")}${near.map(q => pl(q, "")).join("")}${hlOf("N").join("")}</g>`;
+  for (const h of hl || []) if (h.startsWith("dot:")) { const q = J[h.slice(4)]; g += `<circle class="hld" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="5"/>`; }
   return g;
 }
 function drawArrow(a, A, B) {
   const p0 = a.from || add(A[a.j], a.off || [0, 0]), p2 = a.to || add(B[a.j], a.off || [0, 0]);
-  const dx = p2[0] - p0[0], dy = p2[1] - p0[1], L = Math.hypot(dx, dy) || 1, b = a.bend || 0;
+  const dx = p2[0] - p0[0], dy = p2[1] - p0[1], b = a.bend || 0;
   const c = [(p0[0] + p2[0]) / 2 - dy * b, (p0[1] + p2[1]) / 2 + dx * b];
-  const ux = p2[0] - c[0], uy = p2[1] - c[1], ul = Math.hypot(ux, uy) || 1, h = 3.2, wv = 2.2;
+  const ux = p2[0] - c[0], uy = p2[1] - c[1], ul = Math.hypot(ux, uy) || 1, h = 4.5, wv = 3;
   const bx = p2[0] - ux / ul * h, by = p2[1] - uy / ul * h;
   return `<path class="ar" d="M${pt(p0)}Q${pt(c)} ${bx.toFixed(1)},${by.toFixed(1)}"/><path class="arh" d="M${pt(p2)}L${(bx - uy / ul * wv).toFixed(1)},${(by + ux / ul * wv).toFixed(1)}L${(bx + uy / ul * wv).toFixed(1)},${(by - ux / ul * wv).toFixed(1)}Z"/>`;
 }
+// 人と道具がちょうど収まる表示範囲（2コマ共通）。細長くなりすぎないよう縦横比を整える
+function figBox(f, A, B) {
+  const xs = [], ys = [];
+  for (const J of [A, B]) for (const v of Object.values(J)) if (Array.isArray(v)) { xs.push(v[0]); ys.push(v[1]); }
+  for (const J of [A, B]) { xs.push(J.head[0] - 7, J.head[0] + 7); ys.push(J.head[1] - 7); }
+  for (const o of f.props || []) {
+    if (o.c === "chair") { xs.push(o.x - 10, o.x + 9); ys.push(40); }
+    if (o.c === "table") { xs.push(o.x, o.x + (o.w || 20)); ys.push(o.y); }
+    if (o.c === "wall") { xs.push(o.x + 5); ys.push(Math.min(...ys)); }
+    if (o.c === "mat") xs.push(10, 92);
+    if (o.c === "tape") xs.push(...o.xs.map(x => x - 4), ...o.xs.map(x => x + 4));
+    if (o.c === "note") { xs.push(o.x - 20, o.x + 6); ys.push(o.y - 5); }
+  }
+  let x0 = Math.min(...xs) - 6, x1 = Math.max(...xs) + 6, y0 = Math.min(...ys) - 5, y1 = FG + 5;
+  let w = x1 - x0, h = y1 - y0;
+  if (w / h < 1) { x0 -= (h - w) / 2; w = h; }
+  if (w / h > 1.8) { h = w / 1.8; y0 = y1 - h; }
+  return [x0, y0, w, h];
+}
+const FIG_TIP = {
+  iliopsoasStretch: "伸びる", rfStretch: "伸びる", hamStretch: "伸びる", calfStretch: "伸びる",
+  seatedKneeFlex: "（膝）をしっかり曲げる", heelStrikeWalk: "（かかと）から着く", trunkExt: "（背中）を伸ばす",
+  weightShift: "の脚に体重を乗せる", singleLeg: "の脚で支える", stepPractice: "の脚に体重を乗せる",
+};
 // 練習1つ分のイラスト（①はじめ → ②動かす）
 function figHTML(key) {
   const f = FIG[key]; if (!f) return "";
   const [A, B] = f.p.map(solvePose);
-  const svg = (inner, label) => `<svg viewBox="0 0 100 84" role="img" aria-label="${label}"><line class="gr" x1="2" y1="${FG + 0.6}" x2="98" y2="${FG + 0.6}"/>${drawProps(f.props)}${inner}</svg>`;
-  return `<div class="fig">
-    <figure>${svg(drawFig(A, f.hl), f.cap[0])}<figcaption>① ${f.cap[0]}</figcaption></figure>
+  const [x0, y0, w, h] = figBox(f, A, B);
+  const vb = `${x0.toFixed(1)} ${y0.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`;
+  const floor = `<rect class="fl" x="${x0}" y="${FG + 1.3}" width="${w}" height="${y0 + h - FG}"/><line class="gr" x1="${x0}" y1="${FG + 1.3}" x2="${x0 + w}" y2="${FG + 1.3}"/>`;
+  const svg = (inner, label) => `<svg viewBox="${vb}" role="img" aria-label="${label}">${floor}${drawProps(f.props)}${inner}</svg>`;
+  const t = FIG_TIP[key];
+  const tipT = !(f.hl && f.hl.length) ? "" : !t ? "の所に力を入れる" : t.startsWith("伸") ? "の所が" + t : t.startsWith("の") ? t : "の所" + t;
+  return `<div class="figw">${tipT ? `<div class="tip"><i></i>オレンジ色${tipT}</div>` : ""}<div class="fig">
+    <figure>${svg(drawFig(A, f.hl), f.cap[0])}<figcaption><b>①</b> ${f.cap[0]}</figcaption></figure>
     <span class="fa" aria-hidden="true">▶</span>
-    <figure>${svg((f.ghost === false ? "" : drawFig(A, null, true)) + drawFig(B, f.hl) + (f.arrow ? drawArrow(f.arrow, A, B) : ""), f.cap[1])}<figcaption>② ${f.cap[1]}</figcaption></figure>
-  </div>`;
+    <figure>${svg(drawFig(A, null, true) + drawFig(B, f.hl) + (f.arrow ? drawArrow(f.arrow, A, B) : ""), f.cap[1])}<figcaption><b>②</b> ${f.cap[1]}</figcaption></figure>
+  </div></div>`;
 }
 
 const S = { file: null, url: null, frames: [], fps: 30, W: 0, H: 0, view: "side", res: null, issues: [], picked: new Set(), landmarker: null, modelName: null };
