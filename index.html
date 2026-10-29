@@ -201,6 +201,18 @@ body.has-bar .toast { bottom: 84px; }
 .mkguide { margin-top: 10px; }
 .mkrow { margin-top: 10px; }
 .stage.picking canvas { pointer-events: auto; cursor: crosshair; }
+.rk-h { font-size: 16px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.risk { border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 6px; padding: 8px 12px; margin-top: 10px; }
+.risk.bad { border-left-color: var(--bad); }
+.risk h4 { margin: 0; font-size: 15px; }
+.risk ul { margin: 6px 0 0; padding-left: 1.2em; font-size: 14px; }
+.risk li { margin: 4px 0; }
+.ev { display: inline-block; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 8px; white-space: nowrap; }
+.ev.e1 { background: var(--accent-soft); color: var(--accent); }
+.ev.e0 { background: var(--surface-2); color: var(--ink-2); }
+.rk-note { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
+#handout .hrisk { border: 1px solid #999; border-radius: 6px; padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+#handout .hrisk ul { margin: 2px 0 0; padding-left: 1.3em; }
 #handout, #report { display: none; }
 @page { size: A4; margin: 14mm 12mm; }
 @media print {
@@ -337,6 +349,7 @@ body.has-bar .toast { bottom: 84px; }
       <label class="f">10m の所要時間（秒）<input type="number" id="t10" min="1" step="0.1" inputmode="decimal" style="width:130px"></label>
       <label class="f">歩数（歩）<input type="number" id="s10" min="1" step="1" inputmode="numeric" style="width:110px"></label>
     </div>
+    <div id="riskBox"></div>
   </section>
 
   <section class="card" id="secPlan" hidden>
@@ -382,6 +395,10 @@ const TH = {
   asym: 10,           // 歩行時間の左右差（%）
   sideDiff: 10,       // 関節角度の左右差（°）
   pelvicDrop: 6,      // 骨盤下制（°）
+  kneeIn: [7, 12],    // 立脚期の膝の内側への入り（FPPA、°）：要確認・課題（歩行時の参考値）
+  thrust: [4, 7],     // ラテラルスラスト（立脚初期の膝の外側への動揺、°）
+  align: 6,           // 立脚期の膝のアライメント（FPPAの中央値、°）：これを超えるとX脚／O脚傾向
+  toeOut: [20, -5],   // つま先の向き（外向き＋、°）：これを超えると外向き／これ未満で内向き（参考）
   latLean: 6,         // 体幹側方傾斜（°）
 };
 
@@ -636,6 +653,27 @@ const GUIDE = {
   kneeExt: { target: "太ももの前", steps: ["椅子に深く座る", "片方の膝をまっすぐ伸ばし、つま先を天井へ向ける", "3秒保ち、ゆっくり下ろす"], point: "太ももの前に力が入るのを感じる" },
   sideBend: { target: "わき腹", steps: ["足を肩幅に開いて立つ", "片腕を上げる", "反対側へ体をゆっくり倒し、わき腹を伸ばす"], point: "前かがみにならず、真横に倒す" },
 };
+Object.assign(EX, {
+  kneeAlignSquat: { name: "膝とつま先をそろえるスクワット", how: "台につかまり、足を腰幅に開いてつま先を正面に向ける。膝がつま先と同じ向きのまま、浅く曲げて戻る。", dose: "10回×2セット", caution: "膝に痛みが出ない深さまで。必ず台につかまって行う。" },
+  kneeExt: { name: "座って膝を伸ばす運動", how: "椅子に深く座り、片方の膝をまっすぐ伸ばしてつま先を天井へ向け、3秒止めてゆっくり下ろす。", dose: "10回×2セット／左右" },
+  towelGather: { name: "タオルギャザー（足の指でタオルをたぐり寄せる）", how: "椅子に座り、足の下に広げたタオルを、足の指でつかんで手前へたぐり寄せる。", dose: "20回×2セット" },
+});
+Object.assign(GUIDE, {
+  kneeAlignSquat: { target: "お尻の横・太もも（膝の向きのコントロール）", steps: ["台につかまり、足を腰幅に開いてつま先を正面に向ける", "椅子に座るようにお尻を少し後ろへ引きながら、膝を軽く曲げる", "膝が足の人差し指の真上にあるまま、ゆっくり戻る"], point: "鏡で、膝が内側に入っていないかを確認しながら行う" },
+  towelGather: { target: "足の裏（土踏まず）", steps: ["椅子に座り、足の下にタオルを広げる", "かかとは床につけたまま、足の指でタオルをつかんで手前にたぐり寄せる", "端まで寄せたら、タオルを広げてくり返す"], point: "指の付け根から大きく曲げる" },
+});
+Object.assign(FIG, {
+  kneeAlignSquat: { hl: ["dot:kneeN", "dot:kneeF"], cap: ["足を腰幅に開き つま先を正面へ（正面から見た図）", "膝をつま先と同じ向きに保ったまま曲げる"], arrow: { j: "hip", off: [12, 0], bend: 0.3 },
+    p: [{ front: 1, hip: [50, 45], ln: { to: [57, 79] }, lf: { to: [43, 79], bend: -1 } },
+        { front: 1, hip: [50, 53], ln: { to: [57, 79] }, lf: { to: [43, 79], bend: -1 } }] },
+  kneeExt: { hl: ["thighN"], props: [{ c: "chair", x: 40 }], cap: ["椅子に深く座る", "膝をまっすぐ伸ばして3秒 → ゆっくり下ろす"], arrow: { j: "ankN", off: [4, 0], bend: -0.4 },
+    p: [{ hip: [40, 62], ln: [90, 0], lf: [90, 0], an: { to: [45, 63], bend: -1 }, af: { to: [45, 63], bend: -1 } },
+        { hip: [40, 62], ln: [90, 90], lf: [90, 0], an: { to: [45, 63], bend: -1 }, af: { to: [45, 63], bend: -1 } }] },
+  towelGather: { hl: ["dot:toeN"], props: [{ c: "chair", x: 40 }, { c: "towel", x: 63, y: 80.5 }], cap: ["椅子に座り 足の下にタオルを敷く", "足の指でタオルをたぐり寄せる"], arrow: { j: "toeN", off: [2, -4], bend: 0.5 },
+    p: [{ hip: [40, 62], ln: [90, 0], lf: [90, 0], fn: 0, an: { to: [52, 58], bend: -1 }, af: { to: [52, 58], bend: -1 } },
+        { hip: [40, 62], ln: [90, 0], lf: [90, 0], fn: -18, an: { to: [52, 58], bend: -1 }, af: { to: [52, 58], bend: -1 } }] },
+});
+Object.assign(FIG_TIP, { kneeAlignSquat: "（膝）をつま先と同じ向きに保つ", towelGather: "（足の指）に力を入れる" });
 for (const [k, g] of Object.entries(GUIDE)) if (EX[k]) Object.assign(EX[k], g);
 // 注意がポイントと同じ内容なら重ねて出さない（末尾の句点の有無は無視）
 const cautionOf = x => x.caution && x.caution.replace(/。$/, "") !== (x.point || "").replace(/。$/, "") ? x.caution : "";
@@ -798,7 +836,8 @@ $("run").addEventListener("click", async () => {
       if (!(await seek(v, t)) && ++stuck >= 5) throw new Error("動画の場面を読み込めませんでした。動画の下の▶で一度再生してから、もう一度「解析を開始」を押してください。");
       const ts = Math.max(lastTs + 1, Math.round(t * 1000)); lastTs = ts;
       const r = lm.detectForVideo(v, ts);
-      S.frames.push({ t, all: (r.landmarks || []).map(ps => ps.map(p => ({ x: p.x, y: p.y, v: p.visibility ?? 1 }))), lm: null });
+      S.frames.push({ t, all: (r.landmarks || []).map(ps => ps.map(p => ({ x: p.x, y: p.y, v: p.visibility ?? 1 }))), lm: null,
+        allW: (r.worldLandmarks || []).map(ps => ps.map(p => ({ x: p.x, y: p.y, z: p.z }))) });
       if (MK.on) S.frames[i].blobs = detectBlobs(v, S.frames[i].all);
       if (i % 3 === 0) { $("bar").style.width = (100 * (i + 1) / n).toFixed(1) + "%"; setStatus(`解析中… ${i + 1} / ${n} フレーム`); drawFrame(S.frames[i]); await new Promise(r => setTimeout(r)); }
     }
@@ -821,6 +860,7 @@ async function finish() {
   const v = $("video"), n = S.frames.length;
   const detected = S.frames.filter(f => f.lm).length;
   if (detected < n * 0.4) throw new Error(`歩行者を追跡できたのは ${detected}/${n} フレームでした。全身が映るように撮り直すか、「歩行者を選び直す」で別の場面から選んでください。`);
+  for (const f of S.frames) f.lmW = f.lm && f.allW ? f.allW[f.all.indexOf(f.lm)] || null : null; // 追跡した歩行者の奥行きつき推定値
   S.res = computeAll();
   S.mkRate = null;
   if (MK.on && S.view === "side" && S.frames.some(f => f.blobs)) { applyMarkers(); S.res = computeAll(); }
@@ -1263,7 +1303,53 @@ function frontMetrics(pts, vis, fps) {
     dropR: pct(oblC, 0.95), dropL: pct(oblC.map(x => -x), 0.95),
     leanR: pct(lean, 0.95), leanL: pct(lean.map(x => -x), 0.95),
     stride, cadence: ok(stride) ? 120 / stride : nan,
+    ...kneeFront(pts, vis),
   };
+}
+// 前額面の膝・足部：FPPA（膝の内側への入り）、ラテラルスラスト、アライメント、つま先の向き
+function kneeFront(pts, vis) {
+  const legs = { R: { hip: P.hipR, knee: P.kneeR, ank: P.ankR, heel: P.heelR, toe: P.toeR, other: P.hipL }, L: { hip: P.hipL, knee: P.kneeL, ank: P.ankL, heel: P.heelL, toe: P.toeL, other: P.hipR } };
+  const legLen = median(pts.flatMap(q => [P.hipL, P.hipR].map((h, i) => vis(q, h, i ? P.ankR : P.ankL) ? Math.hypot(q[h].x - q[i ? P.ankR : P.ankL].x, q[h].y - q[i ? P.ankR : P.ankL].y) : nan))) || 1;
+  const out = { fppa: {}, stanceOf: [] };
+  // FPPA：膝が股関節と足首を結ぶ線より内側（体の中心側）にあれば＋（knee-in）、外側なら−
+  for (const [k, j] of Object.entries(legs)) out.fppa[k] = smooth(pts.map(q => {
+    if (!vis(q, j.hip, j.knee, j.ank, j.other)) return nan;
+    const H = q[j.hip], K = q[j.knee], A = q[j.ank], ux = q[j.other].x - H.x, uy = q[j.other].y - H.y, ul = Math.hypot(ux, uy) || 1;
+    const t = ((K.x - H.x) * (A.x - H.x) + (K.y - H.y) * (A.y - H.y)) / ((A.x - H.x) ** 2 + (A.y - H.y) ** 2 || 1);
+    const off = ((K.x - (H.x + (A.x - H.x) * t)) * ux + (K.y - (H.y + (A.y - H.y) * t)) * uy) / ul;
+    return Math.sign(off) * (180 - angleAt(H, K, A));
+  }));
+  // 立脚側：足首の画面上の動きが小さいほう（遊脚側は大きく動く）。差がはっきりしないフレームは使わない
+  const spd = k => pts.map((q, i) => { const a = pts[i - 1], b = pts[i + 1], A = legs[k].ank; return a && b && vis(a, A) && vis(b, A) ? Math.hypot(b[A].x - a[A].x, b[A].y - a[A].y) / legLen : nan; });
+  const vR = smooth(spd("R")), vL = smooth(spd("L"));
+  out.stanceOf = vR.map((a, i) => { const b = vL[i]; return !ok(a) || !ok(b) ? null : a * 1.6 < b ? "R" : b * 1.6 < a ? "L" : null; });
+  // 奥行きつき推定値から、進行方向に対する足部の向き（外向き＋）
+  const toe = { R: [], L: [] };
+  S.frames.forEach((f, i) => {
+    const w = f.lmW, st = out.stanceOf[i]; if (!w || !st) return;
+    const ax = w[P.hipR].x - w[P.hipL].x, az = w[P.hipR].z - w[P.hipL].z, al = Math.hypot(ax, az) || 1;
+    const hx = (w[P.hipR].x + w[P.hipL].x) / 2, hz = (w[P.hipR].z + w[P.hipL].z) / 2;
+    let fx = -az / al, fz = ax / al;
+    if (fx * (w[P.nose].x - hx) + fz * (w[P.nose].z - hz) < 0) { fx = -fx; fz = -fz; } // 鼻の向きを前とする
+    const j = legs[st], lat = st === "R" ? 1 : -1, vx = w[j.toe].x - w[j.heel].x, vz = w[j.toe].z - w[j.heel].z;
+    toe[st].push(deg(Math.atan2((vx * ax + vz * az) / al * lat, vx * fx + vz * fz)));
+  });
+  for (const k of ["R", "L"]) {
+    const fp = out.fppa[k], idx = fp.map((_, i) => i).filter(i => out.stanceOf[i] === k && ok(fp[i]));
+    const sv = idx.map(i => fp[i]);
+    out["kneeIn" + k] = sv.length >= 5 ? pct(sv, 0.9) : nan;
+    out["align" + k] = sv.length >= 5 ? median(sv) : nan;
+    // ラテラルスラスト：立脚の始めから前半にかけて、膝が外側へ動いた量（各立脚期の中央値）
+    const th = [];
+    for (let a = 0; a < idx.length;) {
+      let b = a; while (b + 1 < idx.length && idx[b + 1] === idx[b] + 1) b++;
+      if (b - a >= 3) { const seg = idx.slice(a, b + 1).map(i => -fp[i]), first = seg.slice(0, 2), early = seg.slice(0, Math.max(3, Math.round(seg.length * 0.6))); th.push(maxOf(early) - mean(first)); }
+      a = b + 1;
+    }
+    out["thrust" + k] = th.length ? median(th) : nan;
+    out["toeOut" + k] = toe[k].length >= 5 ? median(toe[k]) : nan;
+  }
+  return out;
 }
 
 // ---------- 判定 ----------
@@ -1304,6 +1390,13 @@ function rows() {
     out.push({ label: "体幹の右側方傾斜（最大）", val: f1(r.leanR) + "°", normal: `${TH.latLean}°未満`, st: ok(r.leanR) ? judge(r.leanR > TH.latLean, r.leanR > TH.latLean - 2) : "na" });
     out.push({ label: "体幹の左側方傾斜（最大）", val: f1(r.leanL) + "°", normal: `${TH.latLean}°未満`, st: ok(r.leanL) ? judge(r.leanL > TH.latLean, r.leanL > TH.latLean - 2) : "na" });
     out.push({ label: "ケイデンス（動画）", val: f0(r.cadence) + " 歩/分", normal: "100〜120 歩/分", st: ok(r.cadence) ? judge(r.cadence < TH.cadenceLow, r.cadence < 100) : "na", note: "骨盤の左右動揺の周期から推定" });
+    const lr = (key, fmt = f0) => `<span class="l">左 ${fmt(r[key + "L"])}°</span> / <span class="r">右 ${fmt(r[key + "R"])}°</span>`;
+    const worst = (key, fn) => { const s2 = ["L", "R"].map(k => ok(r[key + k]) ? fn(r[key + k]) : "na"); return s2.includes("bad") ? "bad" : s2.includes("warn") ? "warn" : s2.includes("ok") ? "ok" : "na"; };
+    out.push({ label: "膝の内側への入り（knee-in）", val: lr("kneeIn"), normal: `${TH.kneeIn[0]}°以下（参考）`, st: worst("kneeIn", v => judge(v > TH.kneeIn[1], v > TH.kneeIn[0])), note: "立脚期のFPPA（＋＝膝が内側）の上位値" });
+    out.push({ label: "ラテラルスラスト", val: lr("thrust"), normal: `${TH.thrust[0]}°以下（参考）`, st: worst("thrust", v => judge(v > TH.thrust[1], v > TH.thrust[0])), note: "立脚初期に膝が外側へ動く量" });
+    const al = v => !ok(v) ? "—" : v > TH.align ? `X脚傾向 ${f0(v)}°` : v < -TH.align ? `O脚傾向 ${f0(-v)}°` : "ほぼまっすぐ";
+    out.push({ label: "立脚期の膝のアライメント", val: `<span class="l">左 ${al(r.alignL)}</span> / <span class="r">右 ${al(r.alignR)}</span>`, normal: `±${TH.align}°以内`, st: worst("align", v => Math.abs(v) > TH.align ? "warn" : "ok") });
+    out.push({ label: "つま先の向き（外向き＋）", val: lr("toeOut"), normal: "0〜15°", st: worst("toeOut", v => v > TH.toeOut[0] || v < TH.toeOut[1] ? "warn" : "ok"), note: "AIの奥行き推定による参考値（精度は低め）" });
   }
   if (ok(m.speed)) {
     out.push({ label: "歩行速度（10m実測）", val: m.speed.toFixed(2) + " m/秒", normal: "1.0 m/秒以上で屋外歩行の目安", st: judge(m.speed < 0.8, m.speed < 1.0),
@@ -1355,6 +1448,20 @@ function findIssues() {
     for (const [k, v] of [["R", r.leanR], ["L", r.leanL]]) if (ok(v) && v > TH.latLean)
       add("lean" + k, "warn", `体幹の${SIDE[k]}側への傾き`, `歩行中に体幹が${SIDE[k]}側へ最大 ${f1(v)}° 傾いています（${SIDE[k]}立脚期のデュシェンヌ歩行・代償の疑い）。`,
         `${SIDE[k]}股関節外転筋の筋力低下、${SIDE[k]}下肢の疼痛・荷重回避、体幹の筋力低下など`, ["weightShift", "singleLeg", "sideLegRaise"]);
+    const sidesOf = (key, test) => ["L", "R"].filter(k => ok(r[key + k]) && test(r[key + k]));
+    const vals = (key, ks, fmt = f0) => ks.map(k => SIDE[k] + fmt(r[key + k]) + "°").join("・");
+    let ks = sidesOf("kneeIn", v => v > TH.kneeIn[0]);
+    if (ks.length) add("kneeIn", ks.some(k => r["kneeIn" + k] > TH.kneeIn[1]) ? "bad" : "warn", `立脚期の膝の内側への入り（knee-in・${nameSides(ks)}）`, `体重を支えるときに膝が内側へ入っています（FPPA ${vals("kneeIn", ks)}）。`,
+      "股関節外転・外旋筋の筋力低下、足部の過回内（扁平足）、股関節の内旋・内転の制御不足など", ["kneeAlignSquat", "clamshell", "sideLegRaise", "towelGather"]);
+    ks = sidesOf("thrust", v => v > TH.thrust[0]);
+    if (ks.length) add("thrust", ks.some(k => r["thrust" + k] > TH.thrust[1]) ? "bad" : "warn", `ラテラルスラスト（${nameSides(ks)}）`, `体重がかかった瞬間に膝が外側へ揺れています（${vals("thrust", ks)}）。`,
+      "膝内側の関節裂隙の狭小化（内側型の変形性膝関節症）、大腿四頭筋・股関節外転筋の筋力低下、O脚アライメントなど", ["quadSet", "kneeExt", "sideLegRaise"]);
+    const vr = sidesOf("align", v => v < -TH.align), vg = sidesOf("align", v => v > TH.align);
+    if (vr.length && !is.some(x => x.id === "thrust")) add("alignVarus", "warn", `O脚傾向（${nameSides(vr)}）`, `立脚期の膝が外側に弯曲しています（${vr.map(k => SIDE[k] + f0(-r["align" + k]) + "°").join("・")}）。`, "膝関節の内反変形、大腿四頭筋の筋力低下など", ["quadSet", "kneeExt", "sideLegRaise"]);
+    if (vg.length && !is.some(x => x.id === "kneeIn")) add("alignValgus", "warn", `X脚傾向（${nameSides(vg)}）`, `立脚期の膝が内側に寄っています（${vals("align", vg)}）。`, "膝関節の外反、股関節外転筋の筋力低下、足部の過回内など", ["kneeAlignSquat", "clamshell", "towelGather"]);
+    ks = sidesOf("toeOut", v => v > TH.toeOut[0]);
+    if (ks.length) add("toeOut", "warn", `つま先が外を向く歩き方（下肢の外旋傾向・${nameSides(ks)}）`, `立脚期のつま先が進行方向より外を向いています（${vals("toeOut", ks)}・参考値）。`,
+      "股関節の外旋筋の短縮・内旋可動域の低下、下腿の外捻、足部の過回内、下腿三頭筋の短縮など", ["towelGather", "calfStretch", "kneeAlignSquat"]);
   }
   const cad = ok(m.cad) ? m.cad : r.cadence;
   if (ok(cad) && cad < TH.cadenceLow) add("cadence", "warn", "歩行リズム（ケイデンス）の低下", `ケイデンスが ${f0(cad)} 歩/分と少なめです。`, "下肢筋力・バランス能力の低下、恐怖心など", ["metronome", "sitToStand", "heelRaise"]);
@@ -1374,7 +1481,8 @@ function renderResults() {
   $("chartBox").innerHTML = r.view === "side"
     ? chart("膝関節屈曲角度の推移（▼＝初期接地）", [{ k: "L", a: r.series.L.knee, hs: r.hs.L }, { k: "R", a: r.series.R.knee, hs: r.hs.R }], 0, 80) +
       chart("股関節屈曲(+)／伸展(−)角度の推移", [{ k: "L", a: r.series.L.hip }, { k: "R", a: r.series.R.hip }], -30, 50)
-    : chart("骨盤の傾き（+＝右が下がる）", [{ k: "R", a: r.obl }], -15, 15) + chart("体幹の側方傾斜（+＝右へ傾く）", [{ k: "L", a: r.lean }], -20, 20);
+    : chart("骨盤の傾き（+＝右が下がる）", [{ k: "R", a: r.obl }], -15, 15) + chart("体幹の側方傾斜（+＝右へ傾く）", [{ k: "L", a: r.lean }], -20, 20) +
+      chart("膝の内側への入り（FPPA、+＝膝が内側・−＝外側）", [{ k: "L", a: r.fppa.L }, { k: "R", a: r.fppa.R }], -20, 30);
 }
 function renderTable() {
   $("metrics").innerHTML = "<tr><th>項目</th><th>計測値</th><th>目安</th><th>判定</th></tr>" +
@@ -1401,7 +1509,7 @@ function chart(title, lines, lo, hi) {
 // 「ほかの練習を追加」の分類
 const GROUPS = [
   ["ストレッチ", ["iliopsoasStretch", "rfStretch", "hamStretch", "calfStretch"]],
-  ["筋力・関節運動", ["bridge", "standHipExt", "seatedKneeFlex", "marching", "quadSet", "sitToStand", "toeRaise", "trunkExt", "clamshell", "sideLegRaise", "heelRaise"]],
+  ["筋力・関節運動", ["kneeAlignSquat", "towelGather", "kneeExt", "bridge", "standHipExt", "seatedKneeFlex", "marching", "quadSet", "sitToStand", "toeRaise", "trunkExt", "clamshell", "sideLegRaise", "heelRaise"]],
   ["バランス", ["weightShift", "stepPractice", "singleLeg", "sideStep"]],
   ["歩行練習", ["heelStrikeWalk", "metronome", "strideWalk"]],
 ];
@@ -1469,8 +1577,49 @@ function rfText() {
   return sf.st === "em" ? `緊急受診のサインあり → 練習は提示せず受診を指示（${items}）` : `受診が必要なサインあり（${items}）${sf.st === "drok" ? " → 医師に相談済み・運動許可を確認" : " → 受診を指示、練習は保留"}`;
 }
 
+// ---------- このまま続いた場合のリスク ----------
+// ev：1＝研究で関連が報告されている／0＝運動学的・臨床的な推論。痛み・障害が「必ず起こる」ことを示すものではない
+const RISK = {
+  kneeSwing: [{ r: "つまずき・転倒", m: "遊脚期に足先が床に近いまま振り出され、引っかかりやすくなる", ev: 1 }, { r: "股関節・腰への負担（分回し・骨盤の引き上げなどの代償）", m: "膝が曲がらない分を、脚を外に回したり骨盤を持ち上げたりして補う", ev: 0 }, { r: "疲れやすさ・歩ける距離の低下", m: "代償動作でエネルギー消費が増える", ev: 0 }],
+  kneeStance: [{ r: "膝の前面の痛み（膝蓋大腿関節痛）", m: "膝が曲がったまま体重を支えると、大腿四頭筋と膝蓋大腿関節にかかる力が大きくなる", ev: 0 }, { r: "太ももの疲労・歩ける距離の低下", m: "立脚期に大腿四頭筋が働き続ける", ev: 0 }, { r: "膝の屈曲拘縮・変形性膝関節症の進行", m: "膝を伸ばしきらない状態が続き、関節が伸びにくくなる", ev: 0 }],
+  hipExt: [{ r: "腰痛", m: "股関節が伸びない分を、腰を反らせて歩幅を確保しようとする", ev: 0 }, { r: "歩幅・歩行速度の低下", m: "立脚後期に脚を後ろへ送れず、一歩が小さくなる", ev: 1 }, { r: "前かがみ姿勢の進行", m: "股関節の前（腸腰筋）が縮んだ状態が続く", ev: 0 }],
+  ankleIC: [{ r: "つまずき・転倒", m: "つま先が下がったまま振り出され、床に引っかかりやすい", ev: 1 }, { r: "ふくらはぎ・アキレス腱の短縮", m: "足関節を背屈させない歩き方が続く", ev: 0 }, { r: "前足部の痛み・たこ", m: "つま先側から接地し、前足部に体重が集中する", ev: 0 }],
+  trunk: [{ r: "腰痛・背部痛", m: "前傾姿勢を支えるため、背筋が常に緊張する", ev: 0 }, { r: "前方への転倒", m: "重心が前に寄り、つまずいたときに立て直しにくい", ev: 0 }, { r: "円背（背中の丸まり）の進行", m: "前かがみの姿勢が習慣になる", ev: 0 }],
+  asym: [{ r: "支えやすい側の脚・腰の痛み", m: "片側に体重と時間をかける歩き方が続く", ev: 0 }, { r: "転倒", m: "左右のリズムが不規則だとバランスを崩しやすい", ev: 1 }, { r: "支えにくい側の筋力低下の進行", m: "使われにくい側の筋肉がさらに弱くなる", ev: 0 }],
+  drop: [{ r: "お尻の外側の痛み（大転子周囲の痛み）", m: "股関節外転筋が弱く骨盤を水平に保てない状態で、くり返し負担がかかる", ev: 1 }, { r: "膝の外側・お皿まわりの痛み", m: "骨盤が下がると太ももが内側へ倒れ、膝にねじれの力がかかる", ev: 1 }, { r: "腰痛", m: "骨盤が左右に傾き続け、腰に側方への負担がかかる", ev: 0 }],
+  lean: [{ r: "腰痛", m: "体幹を横に倒す代償で、腰に側屈の負担がくり返しかかる", ev: 0 }, { r: "傾く側の股関節の痛みの悪化", m: "股関節の痛みや筋力低下を、体幹を傾けて補っていることが多い", ev: 0 }, { r: "バランス低下・転倒", m: "重心が左右に大きく揺れる", ev: 0 }],
+  cadence: [{ r: "転倒", m: "一歩ごとの動きがゆっくりで、バランスを崩したときの立て直しが遅れる", ev: 1 }, { r: "活動量の低下と筋力・体力の低下（フレイル）", m: "歩くのが遅く疲れやすいと、外出や活動が減る", ev: 1 }],
+  speed: [{ r: "転倒", m: "歩行速度の低下は転倒のしやすさと関連する", ev: 1 }, { r: "外出・活動の減少、要介護状態への移行", m: "屋外を歩く力が落ちると、生活の範囲が狭くなる", ev: 1 }],
+  kneeIn: [{ r: "膝のお皿まわりの痛み（膝蓋大腿関節痛）", m: "膝が内側に入るとお皿が外側に引かれ、関節に偏った力がかかる", ev: 1 }, { r: "膝の内側の痛み（鵞足部・内側側副靱帯への負担）", m: "膝の内側を引き伸ばす力がくり返しかかる", ev: 0 }, { r: "スポーツや急な方向転換での膝のけが（前十字靱帯損傷）", m: "着地や切り返しで膝が内側に入る動きは、靱帯損傷の危険因子として知られる", ev: 1 }, { r: "扁平足の進行・足裏やすねの内側の痛み", m: "膝が内側に入る動きは、足部が内側へつぶれる動き（過回内）と連動しやすい", ev: 0 }],
+  thrust: [{ r: "膝の内側の痛みの悪化・変形性膝関節症（内側型）の進行", m: "体重がかかった瞬間に膝が外側へ揺れ、膝内側の軟骨に大きな力が集中する", ev: 1 }, { r: "O脚の進行", m: "膝の内側の関節の隙間が狭くなっていく", ev: 0 }],
+  alignVarus: [{ r: "膝の内側の痛み・変形性膝関節症（内側型）", m: "O脚では体重が膝の内側にかかりやすい", ev: 1 }],
+  alignValgus: [{ r: "膝の外側の痛み・変形性膝関節症（外側型）", m: "X脚では体重が膝の外側にかかりやすい", ev: 0 }, { r: "膝のお皿まわりの痛み", m: "膝が内側に寄るとお皿が外側へ引かれやすい", ev: 0 }],
+  toeOut: [{ r: "外反母趾の進行・親指の付け根の痛み", m: "つま先が外を向いたまま蹴り出すと、親指を外側へ曲げる力がかかる", ev: 0 }, { r: "扁平足傾向・足裏の痛み（足底腱膜炎）", m: "足の内側に体重が乗りやすく、土踏まずがつぶれやすい", ev: 0 }, { r: "膝の内側へのねじれの負担", m: "足先と膝の向きがずれ、膝にねじれの力がかかる", ev: 0 }, { r: "蹴り出しが弱くなり、歩く効率が下がる", m: "足の向きが進行方向とずれ、前へ押し出す力が逃げる", ev: 0 }],
+};
+// 療法士向けの補足
+const RISK_NOTE = {
+  toeOut: "内側型の変形性膝関節症では、つま先を外に向ける歩き方が膝内側の負担（膝関節内反モーメント）を減らす代償になっていることがある。一律に修正せず、症状と合わせて判断する。",
+  thrust: "外側楔状足底板（インソール）や膝装具の適応も検討する。",
+  kneeIn: "股関節外転・外旋筋の筋力、足部の回内（扁平足）、片脚スクワットでの膝の動きもあわせて評価する。",
+  drop: "片脚立位でのトレンデレンブルグ徴候、股関節外転筋力もあわせて評価する。",
+};
+const riskKey = id => id.replace(/Diff$/, "").replace(/^(drop|lean)[LR]$/, "$1");
+function riskItems() {
+  const seen = new Set();
+  return S.issues.map(x => ({ x, key: riskKey(x.id) })).filter(o => RISK[o.key] && !seen.has(o.key) && seen.add(o.key));
+}
+const EV = ["臨床的な推論", "研究で関連の報告あり"];
+function renderRisk() {
+  const items = riskItems();
+  $("riskBox").innerHTML = !S.res ? "" : `<h3 class="rk-h">このまま続いた場合に考えられるリスク</h3>
+    <p class="hint" style="margin:4px 0 0">今の歩き方の傾向が続いた場合に起こりうる痛み・障害です（可能性であり、必ず起こるわけではありません）。根拠の強さ：<span class="ev e1">${EV[1]}</span> <span class="ev e0">${EV[0]}</span></p>` +
+    (items.length ? items.map(({ x, key }) => `<div class="risk ${x.sev}"><h4>${x.title}</h4><ul>${RISK[key].map(k => `<li><b>${k.r}</b> <span class="ev e${k.ev}">${EV[k.ev]}</span><div class="hint">しくみ：${k.m}</div></li>`).join("")}</ul>${RISK_NOTE[key] ? `<p class="rk-note">療法士メモ：${RISK_NOTE[key]}</p>` : ""}</div>`).join("")
+      : `<p>判定基準を超える傾向はなく、現時点で特に注意が必要なリスクは見つかりませんでした。</p>`);
+}
+
 function renderPlan() {
   S.issues = S.res ? findIssues() : [];
+  renderRisk();
   const sf = safety();
   if (!safeToExercise()) {
     // 安全チェックを通過するまで練習は提示・印刷しない
@@ -1533,6 +1682,12 @@ function karteText() {
     if (S.issues.length) S.issues.forEach((x, i) => L.push(`${i + 1}. ${x.title}：${x.finding}`));
     else L.push("判定基準を超える項目なし");
     L.push("");
+    const ri = riskItems();
+    if (ri.length) {
+      L.push("【このまま続いた場合のリスク】");
+      for (const { x, key } of ri) L.push(`・${x.title} → ${RISK[key].map(k => k.r + (k.ev ? "（報告あり）" : "")).join("、")}`);
+      L.push("");
+    }
   }
   L.push("【自主練習プログラム】");
   if (!safeToExercise()) L.push("安全チェックの結果により提示を保留");
@@ -1547,6 +1702,7 @@ function updateOutputs() {
   const keys = [...S.picked];
   $("handout").innerHTML = `<h1>あなたの自主練習メニュー</h1>
     <div>${$("edate").value.replaceAll("-", "/")}${patientName() ? "　" + esc(patientName()) + " 様" : ""}</div>
+    ${riskItems().length ? `<div class="hrisk"><b>今の歩き方が続くと、起こりやすいこと（可能性）</b><ul>${[...new Set(riskItems().flatMap(({ key }) => RISK[key].slice(0, 2).map(k => k.r)))].map(t => `<li>${t}</li>`).join("")}</ul>練習を続けて、歩き方の癖を少しずつ変えていきましょう。</div>` : ""}
     <p>毎日の生活の中で、無理のない範囲で続けましょう。痛みや体調の変化があれば中止して担当者に相談してください。</p>` +
     keys.map(exPrint).join("");
 }
@@ -1567,6 +1723,7 @@ function buildReport() {
     <h2>計測値</h2><table class="m">${$("metrics").innerHTML}</table>
     <h2>角度の推移</h2>${$("chartBox").innerHTML}${img}
     <h2>課題</h2>${S.issues.length ? `<ol>${S.issues.map(x => `<li><b>${x.title}</b>：${x.finding}<br><span class="note">考えられる要因：${x.cause}</span></li>`).join("")}</ol>` : "<p>判定基準を超える項目なし</p>"}
+    ${riskItems().length ? `<h2>このまま続いた場合のリスク</h2><ol>${riskItems().map(({ x, key }) => `<li><b>${x.title}</b>：${RISK[key].map(k => `${k.r}（${EV[k.ev]}）`).join("、")}${RISK_NOTE[key] ? `<br><span class="note">療法士メモ：${RISK_NOTE[key]}</span>` : ""}</li>`).join("")}</ol>` : ""}
     <h2>自主練習プログラム</h2>${safeToExercise() ? `<ol>${[...S.picked].map(e => `<li>${EX[e].name}　${EX[e].dose}</li>`).join("")}</ol>` : "<p>安全チェックの結果により提示を保留</p>"}
     <p class="note">※ 単眼カメラ映像からの姿勢推定AIによる2次元推定値（参考値）。評価・プログラムの決定は担当療法士の観察と臨床判断による。</p>`;
 }
